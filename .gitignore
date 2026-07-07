@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+backend/venv/
+backend/venv.*/
+
+# Node / Next.js
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+*.tsbuildinfo
+
+# Local environment
+.env
+.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+backend/.env
+frontend/.env.local
+
+# Local personal data
+backend/*.db
+backups/
+
+# Logs
+*.log
+backend.log
+frontend.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
