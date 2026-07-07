@@ -52,7 +52,7 @@ ai-berkshire-web/
 | 个人数据 | 本机保存，默认不进 Git |
 | 备份 | `./scripts/backup_db.sh` 生成本地数据库备份 |
 
-详细说明见 [docs/LOCAL_PERSONAL_DEPLOY.md](docs/LOCAL_PERSONAL_DEPLOY.md)。GitHub 同步说明见 [docs/GITHUB_SYNC.md](docs/GITHUB_SYNC.md)。
+详细说明见 [docs/LOCAL_PERSONAL_DEPLOY.md](docs/LOCAL_PERSONAL_DEPLOY.md)。GitHub 同步说明见 [docs/GITHUB_SYNC.md](docs/GITHUB_SYNC.md)。产品优化路线见 [docs/PRODUCT_OPTIMIZATION_ROADMAP.md](docs/PRODUCT_OPTIMIZATION_ROADMAP.md)。
 
 ## 快速开始
 
