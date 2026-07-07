@@ -19,6 +19,7 @@ sync_deploy_root() {
     mkdir -p "$DEPLOY_ROOT"
     rsync -a --delete \
         --exclude ".git/" \
+        --exclude "frontend/.next/" \
         --exclude "backend/venv/" \
         --exclude "backend/venv.*/" \
         --exclude "logs/" \
@@ -26,6 +27,17 @@ sync_deploy_root() {
         "$PROJECT_ROOT/" "$DEPLOY_ROOT/"
 
     chmod +x "$DEPLOY_ROOT"/scripts/*.sh
+
+    rm -rf "$DEPLOY_ROOT/frontend/.next"
+    local node_bin="${NODE_BIN:-$(command -v node || true)}"
+    if [ -z "$node_bin" ] && [ -x "$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node" ]; then
+        node_bin="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
+    fi
+    if [ -n "$node_bin" ]; then
+        (cd "$DEPLOY_ROOT/frontend" && "$node_bin" ./node_modules/next/dist/bin/next build)
+    else
+        echo "Node.js not found. Frontend will build on first service start if NODE_BIN is available."
+    fi
 }
 
 write_plists() {

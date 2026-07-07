@@ -255,7 +255,24 @@ export function deleteJournal(id: string) {
 
 // Asset Allocation
 export function getAssetAllocations() {
-  return fetchApi<any[]>("/assets/");
+  return fetchApi<any[]>("/assets/").then((items) =>
+    (items || []).map((item) => ({
+      id: String(item.id),
+      asset_type: item.asset_type || "",
+      asset_name: item.asset_name || item.asset_type || "",
+      category: item.asset_name || item.asset_type || "",
+      amount: item.amount || 0,
+      currency: item.currency || "CNY",
+      liquidity_level: item.liquidity_level || "medium",
+      risk_level: item.risk_level || "medium",
+      current_percent: (item.current_ratio || 0) * 100,
+      target_percent: (item.target_ratio || 0) * 100,
+      current_ratio: item.current_ratio || 0,
+      target_ratio: item.target_ratio || 0,
+      deviation: item.deviation || 0,
+      updated_at: item.updated_at,
+    }))
+  );
 }
 
 export function addAllocation(data: {
@@ -278,11 +295,45 @@ export function addAllocation(data: {
     currency: data.currency || "CNY",
     liquidity_level: data.liquidity_level || "medium",
     risk_level: data.risk_level || "medium",
-    target_ratio: data.target_ratio || data.target_percent || 0,
+    target_ratio:
+      data.target_ratio !== undefined
+        ? data.target_ratio
+        : data.target_percent !== undefined
+        ? data.target_percent / 100
+        : 0,
   };
   return fetchApi<any>("/assets/", {
     method: "POST",
     body: JSON.stringify(backendData),
+  });
+}
+
+export function updateAllocation(id: string, data: {
+  asset_type: string;
+  asset_name?: string;
+  amount: number;
+  currency?: string;
+  liquidity_level?: string;
+  risk_level?: string;
+  target_percent?: number;
+}) {
+  return fetchApi<any>(`/assets/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      asset_type: data.asset_type,
+      asset_name: data.asset_name || data.asset_type,
+      amount: data.amount || 0,
+      currency: data.currency || "CNY",
+      liquidity_level: data.liquidity_level || "medium",
+      risk_level: data.risk_level || "medium",
+      target_ratio: (data.target_percent || 0) / 100,
+    }),
+  });
+}
+
+export function deleteAllocation(id: string) {
+  return fetchApi<void>(`/assets/${id}`, {
+    method: "DELETE",
   });
 }
 
