@@ -271,13 +271,14 @@ class MarketService:
 
             code = ticker.upper().split(".")[0]
             suffix = ".SS" if sina_code.startswith("sh") else ".SZ"
-            price = self._safe_float(parts[3])
+            raw_price = self._safe_float(parts[3])
             prev_close = self._safe_float(parts[2])
             open_price = self._safe_float(parts[1])
             high = self._safe_float(parts[4])
             low = self._safe_float(parts[5])
             volume = self._safe_float(parts[8])
             amount = self._safe_float(parts[9])
+            price = raw_price if raw_price > 0 else prev_close
             change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0
 
             return {

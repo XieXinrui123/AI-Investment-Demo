@@ -13,6 +13,17 @@ class FakeResponse:
     )
 
 
+class PremarketFakeResponse:
+    status_code = 200
+    encoding = "gbk"
+    text = (
+        'var hq_str_sh600519="贵州茅台,0.000,1206.910,0.000,'
+        '0.000,0.000,0.000,0.000,0,0.000,0,0.000,0,0.000,0,'
+        '0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,'
+        '0,0.000,0,0.000,2026-07-07,09:03:43,00";'
+    )
+
+
 def test_sina_stock_spot_parses_a_share(monkeypatch):
     def fake_get(url, headers=None, timeout=None):
         assert "sh600519" in url
@@ -29,6 +40,20 @@ def test_sina_stock_spot_parses_a_share(monkeypatch):
     assert result["price"] == 1206.91
     assert result["change_pct"] == 1.04
     assert result["data_source"] if "data_source" in result else True
+
+
+def test_sina_stock_spot_uses_previous_close_before_open(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return PremarketFakeResponse()
+
+    import requests
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    result = MarketService()._source_sina_stock_spot("600519.SS")
+
+    assert result["price"] == 1206.91
+    assert result["change_pct"] == 0
 
 
 def test_stock_detail_falls_back_without_raising(monkeypatch):
