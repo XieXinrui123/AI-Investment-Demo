@@ -38,6 +38,23 @@ password: demo123456
 ./start.sh stop
 ```
 
+## Persistent macOS Local Deployment
+
+To keep the app running after you close the terminal, install it as user-level macOS LaunchAgent services:
+
+```bash
+./scripts/local_services.sh install
+```
+
+Check or stop the services:
+
+```bash
+./scripts/local_services.sh status
+./scripts/local_services.sh stop
+```
+
+LaunchAgent logs are written to `logs/` and ignored by Git.
+
 ## Back Up Personal Data
 
 ```bash
