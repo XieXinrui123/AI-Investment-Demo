@@ -44,7 +44,7 @@ function transformIndices(indices: any[]): any[] {
     symbol: idx.code || idx.symbol || "",
     name: idx.name || "",
     price: idx.close || idx.price || 0,
-    change: idx.change_pct || idx.change || 0,
+    change: idx.change || 0,
     change_percent: idx.change_pct || idx.change_percent || 0,
     volume: idx.volume || 0,
   }));

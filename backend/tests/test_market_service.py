@@ -24,6 +24,18 @@ class PremarketFakeResponse:
     )
 
 
+class IndexPremarketFakeResponse:
+    status_code = 200
+    encoding = "gbk"
+    text = (
+        'var hq_str_sh000001="上证指数,0.0000,4041.2382,4041.1241,0.0000,0.0000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2026-07-07,09:15:55,00,";\n'
+        'var hq_str_sz399001="深证成指,0.000,15416.804,0.000,0.000,0.000,0.000,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,2026-07-07,09:15:57,00";\n'
+        'var hq_str_sz399006="创业板指,0.000,3948.860,0.000,0.000,0.000,0.000,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,0,0.000,2026-07-07,09:15:12,00";\n'
+        'var hq_str_sh000688="科创50,0.0000,1996.1029,1996.1029,0.0000,0.0000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2026-07-07,09:15:55,00,";\n'
+        'var hq_str_sh000300="沪深300,0.0000,4841.9980,4841.9634,0.0000,0.0000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2026-07-07,09:15:55,00,";'
+    )
+
+
 def test_sina_stock_spot_parses_a_share(monkeypatch):
     def fake_get(url, headers=None, timeout=None):
         assert "sh600519" in url
@@ -54,6 +66,26 @@ def test_sina_stock_spot_uses_previous_close_before_open(monkeypatch):
 
     assert result["price"] == 1206.91
     assert result["change_pct"] == 0
+
+
+def test_sina_indices_use_full_codes_and_previous_close_before_open(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        assert "sz399001" in url
+        assert "sz399006" in url
+        return IndexPremarketFakeResponse()
+
+    import requests
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    indices = MarketService()._source_sina_indices()
+    by_code = {item["code"]: item for item in indices}
+
+    assert by_code["399001"]["close"] == 15416.8
+    assert by_code["399001"]["change_pct"] == 0
+    assert by_code["399006"]["close"] == 3948.86
+    assert by_code["399006"]["change_pct"] == 0
+    assert by_code["000688"]["close"] == 1996.1
 
 
 def test_stock_detail_falls_back_without_raising(monkeypatch):

@@ -44,8 +44,8 @@ class MarketService:
     }
     
     SINA_CODES = {
-        "000001": "s_sh000001", "399001": "s_sz399001",
-        "399006": "s_sz399006", "000688": "s_sh000688", "000300": "s_sh000300",
+        "000001": "sh000001", "399001": "sz399001",
+        "399006": "sz399006", "000688": "sh000688", "000300": "sh000300",
     }
 
     REQUEST_HEADERS = {
@@ -225,18 +225,26 @@ class MarketService:
             
             text = resp.text
             indices = []
-            # 格式: var hq_str_s_sh000001="上证指数,3385.42,27.50,0.82,..."
+            # 完整指数格式: name,open,prev_close,current,high,low,...
             for code, sina_code in self.SINA_CODES.items():
                 pattern = rf'var hq_str_{sina_code}="([^"]*)"'
                 match = re.search(pattern, text)
                 if match:
                     parts = match.group(1).split(',')
                     if len(parts) >= 4:
+                        prev_close = self._safe_float(parts[2])
+                        raw_price = self._safe_float(parts[3])
+                        price = raw_price if raw_price > 0 else prev_close
+                        change = price - prev_close if prev_close else 0
+                        change_pct = (change / prev_close * 100) if prev_close else 0
                         indices.append({
                             "code": code,
                             "name": parts[0],
-                            "close": float(parts[1]) if parts[1] else 0,
-                            "change_pct": float(parts[3]) if parts[3] else 0,
+                            "close": round(price, 2),
+                            "change": round(change, 2),
+                            "change_pct": round(change_pct, 2),
+                            "prev_close": round(prev_close, 2),
+                            "volume": int(self._safe_float(parts[8])) if len(parts) > 8 else 0,
                         })
                     else:
                         indices.append({"code": code, "name": self.A_INDEX_CODES.get(code, code), "close": 0, "change_pct": 0})
