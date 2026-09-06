@@ -1,4 +1,4 @@
-name: RRI Wayback Analyst Probe
+name: RRI Eastmoney F10 Forecast Probe
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  probe-wayback:
+  probe-em-f10:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,60 +14,47 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: python -m pip install --upgrade pip requests pandas beautifulsoup4 lxml
-      - name: Probe Wayback coverage for historical analyst pages
+        run: python -m pip install --upgrade pip requests pandas
+      - name: Probe Eastmoney F10 historical forecast detail
         run: |
-          mkdir -p rri_run/wayback_probe
-          python - <<'PY' > rri_run/wayback_probe/probe.txt 2>&1
-          import requests, pandas as pd, io, re, time
-          from datetime import datetime
-          samples=[
-            ('600754','2015-01-17'),('601919','2015-12-25'),('300058','2015-11-13'),
-            ('000938','2015-10-28'),('600879','2015-09-16'),('600271','2018-06-01'),
-            ('300124','2018-06-01'),('002502','2019-06-01'),('603588','2020-06-01'),
-            ('601666','2020-06-01'),('688102','2023-06-01'),('688551','2023-06-01')
-          ]
-          s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
-          cdx='https://web.archive.org/cdx/search/cdx'
-          for code,evdate in samples:
-            url=f'basic.10jqka.com.cn/{code}/worth.html'
-            params={'url':url,'from':'2014','to':'2024','output':'json','filter':'statuscode:200','fl':'timestamp,original,statuscode,digest','collapse':'digest'}
-            try:
-              r=s.get(cdx,params=params,timeout=30)
-              print('\nCODE',code,'EVENT',evdate,'CDX_STATUS',r.status_code,'LEN',len(r.text))
-              if r.status_code!=200:
-                print(r.text[:500]); continue
-              js=r.json()
-              rows=js[1:] if isinstance(js,list) and len(js)>1 else []
-              print('SNAPSHOTS',len(rows))
-              if rows:
-                ts=[x[0] for x in rows]
-                print('FIRST',ts[0],'LAST',ts[-1])
-                target=pd.Timestamp(evdate)
-                near=sorted(ts,key=lambda x:abs(pd.Timestamp(x[:8])-target))[:5]
-                print('NEAREST',near)
-                for snap in near[:2]:
-                  wu=f'https://web.archive.org/web/{snap}id_/http://basic.10jqka.com.cn/{code}/worth.html'
-                  rr=s.get(wu,timeout=30)
-                  print('FETCH',snap,rr.status_code,'HTML_LEN',len(rr.text))
-                  if rr.status_code==200:
-                    try:
-                      tabs=pd.read_html(io.StringIO(rr.text))
-                      hit=[]
-                      for t in tabs:
-                        cols='|'.join(map(str,t.columns))
-                        if ('报告日期' in cols or '机构名称' in cols or '研究员' in cols) and len(t)>0:
-                          hit.append((t.shape,cols[:220],t.head(2).to_dict('records')))
-                      print('FORECAST_TABLES',len(hit))
-                      for h in hit[:2]: print('TABLE',h)
-                    except Exception as e: print('PARSE_ERR',repr(e))
-              time.sleep(.2)
-            except Exception as e:
-              print('ERR',code,repr(e))
+          mkdir -p rri_run/em_f10_probe
+          python - <<'PY' > rri_run/em_f10_probe/probe.txt 2>&1
+          import requests, json, pandas as pd
+          samples=['600754','601919','300058','000938','600879','600271','300124','002502','603588','601666']
+          s=requests.Session(); s.headers.update({'User-Agent':'Mozilla/5.0','Referer':'https://emweb.securities.eastmoney.com/'})
+          for code in samples:
+            market='SH' if code.startswith(('5','6','9')) else 'SZ'
+            for ep in ['ProfitForecastAjax','PageAjax']:
+              u=f'https://emweb.securities.eastmoney.com/PC_HSF10/ProfitForecast/{ep}?code={market}{code}'
+              try:
+                r=s.get(u,timeout=25)
+                print('\nCODE',code,'EP',ep,'STATUS',r.status_code,'LEN',len(r.text),'CT',r.headers.get('content-type'))
+                print('HEAD',r.text[:180].replace('\n',' '))
+                if r.status_code!=200: continue
+                js=r.json()
+                root=js.get('Result',js)
+                # old endpoint
+                if isinstance(root,dict) and 'ycmx' in root:
+                  mg=(root.get('ycmx') or {}).get('mgsy') or {}
+                  data=mg.get('data') or []
+                  print('OLD_BASEYEAR',mg.get('baseYear'),'ROWS',len(data))
+                  dates=[str(x.get('sj','')) for x in data if x.get('sj')]
+                  print('DATES_FIRST_LAST',dates[:3],dates[-3:])
+                  print('ROW_SAMPLE',data[:2])
+                # new endpoint likely jgyc/ycmx
+                if isinstance(root,dict):
+                  print('ROOT_KEYS',list(root)[:30])
+                  for k,v in root.items():
+                    if isinstance(v,list):
+                      print('LIST',k,'N',len(v),'SAMPLE',v[:2])
+                    elif isinstance(v,dict):
+                      for kk,vv in v.items():
+                        if isinstance(vv,list): print('NESTED_LIST',k,kk,'N',len(vv),'SAMPLE',vv[:2])
+              except Exception as e: print('ERR',code,ep,repr(e))
           PY
       - name: Upload probe
         uses: actions/upload-artifact@v4
         with:
-          name: rri-wayback-probe-${{ github.run_id }}
-          path: rri_run/wayback_probe
+          name: rri-em-f10-probe-${{ github.run_id }}
+          path: rri_run/em_f10_probe
           if-no-files-found: error
