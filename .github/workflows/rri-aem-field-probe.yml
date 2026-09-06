@@ -1,4 +1,4 @@
-name: RRI AEM Financial Field Probe
+name: RRI AEM Financial Directory Probe
 
 on:
   push:
@@ -14,24 +14,34 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip pandas requests pyarrow
-      - name: Probe public financial parquet schemas and AEM coverage fields
+      - name: List financial directory and inspect candidate files
         run: |
           mkdir -p rri_aem_probe
-          python - <<'PY' > rri_aem_probe/probe.txt 2>&1
+          python - <<'PY' > rri_aem_probe/directory_probe.txt 2>&1
           import io, requests, pandas as pd
+          api='https://huggingface.co/api/datasets/yifishbossman/financial-analyst-data-full/tree/main/parquet/financial'
+          r=requests.get(api,params={'limit':100},timeout=60,headers={'User-Agent':'Mozilla/5.0'}); print('tree status',r.status_code); r.raise_for_status()
+          items=r.json();
+          files=[x.get('path','').split('/')[-1] for x in items if x.get('type')=='file']
+          print('FILES',files)
           root='https://huggingface.co/datasets/yifishbossman/financial-analyst-data-full/resolve/main/parquet/financial'
-          for fn in ['balance_sheet.parquet','profit_sheet.parquet','cash_flow.parquet']:
+          keys=['fix','asset','audit','fina','indicator','income','cash','balance']
+          cand=[f for f in files if any(k in f.lower() for k in keys)]
+          print('CANDIDATE FILES',cand)
+          for fn in cand:
+              if fn in ['balance_sheet.parquet','profit_sheet.parquet','cash_flow.parquet']: continue
               print('\n===',fn,'===')
-              r=requests.get(f'{root}/{fn}',timeout=180,headers={'User-Agent':'Mozilla/5.0'})
-              print('status',r.status_code,'bytes',len(r.content)); r.raise_for_status()
-              d=pd.read_parquet(io.BytesIO(r.content))
-              print('shape',d.shape)
-              print('columns',list(d.columns))
-              cand=[c for c in d.columns if any(k in c.lower() for k in ['asset','receiv','ppe','fix','cash','income','revenue','depr','cfo','operat','n_cashflow','end_date','ann_date'])]
-              print('candidate cols',cand)
-              print(d[cand[:30]].head(3).to_string(index=False) if cand else d.head(3).to_string(index=False))
+              rr=requests.get(f'{root}/{fn}',timeout=180,headers={'User-Agent':'Mozilla/5.0'})
+              print('status',rr.status_code,'bytes',len(rr.content))
+              if rr.status_code!=200: continue
+              try:d=pd.read_parquet(io.BytesIO(rr.content))
+              except Exception as e: print('readerr',repr(e)); continue
+              print('shape',d.shape); print('columns',list(d.columns))
+              interesting=[c for c in d.columns if any(k in c.lower() for k in ['fix','ppe','asset','receiv','audit','opinion','cashflow','revenue','income','depr'])]
+              print('interesting',interesting)
+              print(d[interesting[:30]].head(3).to_string(index=False) if interesting else d.head(3).to_string(index=False))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: rri-aem-field-probe-${{ github.run_id }}
+          name: rri-aem-directory-probe-${{ github.run_id }}
           path: rri_aem_probe
