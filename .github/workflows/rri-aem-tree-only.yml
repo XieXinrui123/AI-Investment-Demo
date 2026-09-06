@@ -1,0 +1,28 @@
+name: RRI AEM Tree Only
+
+on:
+  push:
+    branches: ["rri-aem-20260906"]
+
+jobs:
+  list-tree:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip requests
+      - name: List HF financial tree only
+        run: |
+          mkdir -p out
+          python - <<'PY' > out/tree.txt
+          import requests
+          u='https://huggingface.co/api/datasets/yifishbossman/financial-analyst-data-full/tree/main/parquet/financial'
+          r=requests.get(u,params={'limit':100},timeout=30,headers={'User-Agent':'Mozilla/5.0'}); print(r.status_code); r.raise_for_status()
+          for x in r.json(): print(x.get('type'),x.get('path'),x.get('size'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rri-aem-tree-only-${{ github.run_id }}
+          path: out/tree.txt
