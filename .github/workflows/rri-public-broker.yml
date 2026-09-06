@@ -1,44 +1,42 @@
-name: RRI Open Financial Schema Probe
+name: RRI Historical Industry Probe
 
 on:
   push:
     branches: ["rri-run-20260906"]
 
 jobs:
-  probe-financial-schema:
+  probe-industry:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m pip install --upgrade pip requests pandas pyarrow
-      - name: Inspect financial schemas
+      - run: python -m pip install --upgrade pip pandas requests pyarrow akshare
+      - name: Probe annual historical industries and fallback schema
         run: |
-          mkdir -p rri_run/financial_schema_probe
-          python - <<'PY' > rri_run/financial_schema_probe/probe.txt 2>&1
-          import requests,pandas as pd,io
+          mkdir -p rri_run/industry_probe
+          python - <<'PY' > rri_run/industry_probe/probe.txt 2>&1
+          import akshare as ak, pandas as pd, requests, io
+          for y in [2015,2017,2020,2024]:
+              print('\n=== EASTMONEY',y,'===')
+              try:
+                  d=ak.stock_yjbb_em(date=f'{y}1231')
+                  print('shape',d.shape)
+                  print('cols',list(d.columns))
+                  print(d[['股票代码','股票简称','所处行业']].head(10).to_string(index=False) if '所处行业' in d.columns else d.head().to_string(index=False))
+              except Exception as e:
+                  print(type(e).__name__,repr(e))
           repo='yifishbossman/financial-analyst-data-full'
-          files=['balance_sheet.parquet','profit_sheet.parquet','cash_flow.parquet']
-          for fn in files:
-            u=f'https://huggingface.co/datasets/{repo}/resolve/main/parquet/financial/{fn}'
-            r=requests.get(u,timeout=180)
-            print('\n===',fn,'STATUS',r.status_code,'BYTES',len(r.content),'===')
-            if r.status_code!=200: continue
-            df=pd.read_parquet(io.BytesIO(r.content))
-            print('SHAPE',df.shape)
-            print('COLS',list(df.columns))
-            print('DTYPES\n',df.dtypes.to_string())
-            print('HEAD\n',df.head(8).to_string(index=False))
-            for c in df.columns:
-              lc=c.lower()
-              if any(k in lc for k in ['date','period','year','end']):
-                try:
-                  x=pd.to_datetime(df[c],errors='coerce')
-                  if x.notna().any(): print('DATE_RANGE',c,x.min(),x.max(),'NONNA',int(x.notna().sum()))
-                except Exception: pass
+          for fn in ['tushare_stock_basic.parquet','industry_boards.parquet']:
+              u=f'https://huggingface.co/datasets/{repo}/resolve/main/parquet/{fn}'
+              r=requests.get(u,timeout=120)
+              print('\n=== HF',fn,'===',r.status_code,len(r.content))
+              if r.status_code==200:
+                  d=pd.read_parquet(io.BytesIO(r.content))
+                  print('shape',d.shape); print('cols',list(d.columns)); print(d.head(10).to_string(index=False))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: rri-financial-schema-${{ github.run_id }}
-          path: rri_run/financial_schema_probe
+          name: rri-industry-probe-${{ github.run_id }}
+          path: rri_run/industry_probe
