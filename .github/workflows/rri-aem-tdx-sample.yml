@@ -1,0 +1,40 @@
+name: RRI AEM TDX Sample Probe
+
+on:
+  push:
+    branches: ["rri-aem-20260906"]
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip duckdb
+      - name: Inspect remote TDX sample rows and parquet metadata
+        run: |
+          mkdir -p rri_aem_tdx_sample
+          python - <<'PY' > rri_aem_tdx_sample/sample.txt 2>&1
+          import duckdb
+          u='https://huggingface.co/datasets/yifishbossman/financial-analyst-data-full/resolve/main/parquet/financial/tdx_financial.parquet'
+          con=duckdb.connect()
+          con.execute('INSTALL httpfs; LOAD httpfs;')
+          print('COUNT')
+          print(con.execute(f"select count(*) n from read_parquet('{u}')").fetchdf().to_string(index=False))
+          print('\nSAMPLE_SELECTED')
+          cols=['report_date','period','eps','total_revenue','net_profit','ocf','total_assets','fixed_assets']
+          q='select '+','.join(cols)+f" from read_parquet('{u}') limit 12"
+          print(con.execute(q).fetchdf().to_string(index=False))
+          print('\nDISTINCT_PERIOD_SAMPLE')
+          print(con.execute(f"select period,count(*) n,min(report_date) min_date,max(report_date) max_date from read_parquet('{u}') group by 1 order by n desc limit 20").fetchdf().to_string(index=False))
+          print('\nPARQUET_METADATA_COLS')
+          m=con.execute(f"select * from parquet_metadata('{u}') limit 5").fetchdf()
+          print(m.columns.tolist())
+          print(m.to_string(index=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rri-aem-tdx-sample-${{ github.run_id }}
+          path: rri_aem_tdx_sample
