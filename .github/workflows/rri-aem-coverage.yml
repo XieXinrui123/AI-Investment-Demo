@@ -1,0 +1,35 @@
+name: RRI AEM Coverage Only
+
+on:
+  push:
+    branches: ["rri-aem-20260906"]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip pandas numpy requests
+      - name: Build full-market Modified Jones and audit RRI coverage only
+        run: python rri_aem/build_eastmoney_aem_coverage_v1_0.py 2>&1 | tee rri_aem_coverage.log
+      - name: Guard against coefficient leakage
+        run: |
+          python - <<'PY'
+          import json
+          p='rri_aem_output/RRI_AEM_COVERAGE_SUMMARY.json'
+          j=json.load(open(p))
+          assert j['coverage_only_no_rri_coefficient_estimated'] is True
+          print(json.dumps(j,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rri-aem-coverage-${{ github.run_id }}
+          path: |
+            rri_aem_output
+            rri_aem_coverage.log
+            rri_aem/RRI_AEM_EASTMONEY_FIELD_FREEZE_v1.1.json
+            rri_aem/build_eastmoney_aem_coverage_v1_0.py
