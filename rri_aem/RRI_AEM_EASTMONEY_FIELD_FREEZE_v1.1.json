@@ -1,0 +1,58 @@
+{
+  "freeze_name": "RRI_AEM_EASTMONEY_FIELD_FREEZE_v1.1",
+  "freeze_date": "2026-09-06",
+  "status": "FROZEN_BEFORE_ANY_RRI_AEM_COEFFICIENT",
+  "primary_outcome": "ABS_DA_tplus1",
+  "data_source": {
+    "provider": "Eastmoney datacenter-web public API",
+    "annual_value_policy": "current final/restated annual values returned by the API",
+    "balance_report": "RPT_DMSK_FN_BALANCE",
+    "income_report": "RPT_DMSK_FN_INCOME",
+    "cashflow_report": "RPT_DMSK_FN_CASHFLOW",
+    "historical_industry_report": "RPT_LICO_FN_CPD",
+    "annual_report_date": "YYYY-12-31",
+    "deduplication": "SECURITY_CODE + REPORT_DATE; latest NOTICE_DATE; deterministic lexical SECUCODE tie-break if needed"
+  },
+  "field_map": {
+    "firm_code": "SECURITY_CODE",
+    "report_date": "REPORT_DATE",
+    "notice_date": "NOTICE_DATE",
+    "total_assets": "TOTAL_ASSETS",
+    "ppe": "FIXED_ASSET",
+    "accounts_receivable": "ACCOUNTS_RECE",
+    "cash": "MONETARYFUNDS",
+    "total_liabilities": "TOTAL_LIABILITIES",
+    "revenue": "TOTAL_OPERATE_INCOME",
+    "net_income": "PARENT_NETPROFIT",
+    "cfo": "NETCASH_OPERATE",
+    "historical_industry": "PUBLISHNAME"
+  },
+  "modified_jones": {
+    "raw_years": "2013-2025",
+    "da_years": "2014-2025",
+    "total_accruals": "TA = NetIncome - CFO",
+    "scale": "lagged total assets A_(t-1)",
+    "peer_cell": "historical industry x fiscal year",
+    "minimum_peer_n": 20,
+    "regression": "TA/A_(t-1) = a1*(1/A_(t-1)) + a2*((dRevenue-dAR)/A_(t-1)) + a3*(PPE/A_(t-1)) + error",
+    "discretionary_accrual": "DA = residual",
+    "primary_measure": "ABS_DA = abs(DA)",
+    "financial_firm_exclusion": "exclude historical industry names containing bank/securities/insurance/financial terms before peer estimation",
+    "financial_name_patterns_cn": ["银行", "证券", "保险", "金融", "信托", "期货"],
+    "winsorization": "continuous constructed ratios annual 1st/99th percentile"
+  },
+  "main_regression": {
+    "equation": "ABS_DA_(t+1) ~ RRI10 + ABS_DA_(t-1) + Size_t + Leverage_t + ROA_t + SalesGrowth_t + Cash_t + ln(1+nQuestions) + Year FE + Industry FE + InquiryType FE",
+    "standard_errors": "firm-clustered",
+    "prediction": "beta_RRI10 < 0",
+    "go_gate": "main beta<0 and p<0.10 and first-event beta<0",
+    "first_event_definition": "earliest RRI firm-year per firm",
+    "no_rescue": "Do not alter peer N, outcome, controls, winsorization, or add REM after observing results"
+  },
+  "governance": {
+    "coverage_before_coefficients": true,
+    "coverage_stage_must_not_estimate_rri_coefficient": true,
+    "tdx_financial_rejected_as_primary_source_reason": "fixed_assets exists but no safe stock-code key was identified",
+    "hf_hybrid_not_used": "unified Eastmoney statements available; avoid cross-source joining"
+  }
+}
