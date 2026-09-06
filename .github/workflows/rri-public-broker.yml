@@ -1,0 +1,26 @@
+name: RRI Public Broker Screen
+
+on:
+  push:
+    branches: ["rri-run-20260906"]
+  workflow_dispatch:
+
+jobs:
+  run-rri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pandas numpy requests statsmodels
+      - name: Run frozen public broker screen
+        run: python rri_run/run.py
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rri-public-broker-results
+          path: rri_run/results
+          if-no-files-found: error
