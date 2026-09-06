@@ -2,7 +2,7 @@ name: RRI Direct Historical Industry Probe
 
 on:
   push:
-    branches: ["rri-run-20260906"]
+    branches: ["rri-op-20260906"]
 
 jobs:
   probe-industry-direct:
@@ -24,18 +24,19 @@ jobs:
               params={
                 'sortColumns':'UPDATE_DATE,SECURITY_CODE','sortTypes':'-1,-1',
                 'pageSize':'20','pageNumber':'1','reportName':'RPT_LICO_FN_CPD',
-                'columns':'ALL','filter':f"(REPORTDATE='{y}-12-31')"
+                'columns':'ALL','filter':f"(REPORTDATE='{y}-12-31')",
+                'source':'WEB','client':'WEB'
               }
               print('\n===',y,'===')
               try:
-                  r=requests.get(u,params=params,timeout=20,headers={'User-Agent':'Mozilla/5.0'})
-                  print('status',r.status_code,'bytes',len(r.content),'url',r.url)
+                  r=requests.get(u,params=params,timeout=20,headers={'User-Agent':'Mozilla/5.0','Referer':'https://data.eastmoney.com/'})
+                  print('status',r.status_code,'bytes',len(r.content))
                   j=r.json(); print('success',j.get('success'),'msg',j.get('message'))
                   result=j.get('result') or {}; print('pages',result.get('pages'),'count',result.get('count'))
                   data=result.get('data') or []
                   if data:
                       print('keys',sorted(data[0].keys()))
-                      print('first',json.dumps(data[0],ensure_ascii=False)[:4000])
+                      print('sample_code',data[0].get('SECURITY_CODE'),'name',data[0].get('SECURITY_NAME_ABBR'),'industry',data[0].get('PUBLISHNAME'))
               except Exception as e:
                   print(type(e).__name__,repr(e))
           PY
