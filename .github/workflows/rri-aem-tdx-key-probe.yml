@@ -1,0 +1,40 @@
+name: RRI AEM TDX Key Probe
+
+on:
+  push:
+    branches: ["rri-aem-20260906"]
+
+jobs:
+  key-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip duckdb pandas
+      - name: Identify company key and metadata in TDX financial parquet
+        run: |
+          mkdir -p rri_aem_tdx_key
+          python - <<'PY' > rri_aem_tdx_key/key_probe.txt 2>&1
+          import duckdb
+          url='https://huggingface.co/datasets/yifishbossman/financial-analyst-data-full/resolve/main/parquet/financial/tdx_financial.parquet'
+          con=duckdb.connect()
+          con.execute('INSTALL httpfs; LOAD httpfs')
+          print('SAMPLE')
+          print(con.execute("SELECT report_date,col1,eps,total_revenue,net_profit,ocf,total_assets,fixed_assets,period FROM read_parquet(?) LIMIT 25",[url]).fetchdf().to_string(index=False))
+          print('\nSUMMARY')
+          print(con.execute("SELECT count(*) n, count(distinct col1) n_col1, min(col1) min_col1, max(col1) max_col1, count(distinct report_date) n_report_date, min(report_date) min_report_date, max(report_date) max_report_date, count(distinct period) n_period FROM read_parquet(?)",[url]).fetchdf().to_string(index=False))
+          print('\nPERIOD_SAMPLE')
+          print(con.execute("SELECT period,count(*) n,min(report_date) mn,max(report_date) mx FROM read_parquet(?) GROUP BY period ORDER BY n DESC LIMIT 30",[url]).fetchdf().to_string(index=False))
+          print('\nPARQUET_KV_METADATA')
+          try:
+              x=con.execute("SELECT * FROM parquet_kv_metadata(?)",[url]).fetchdf()
+              print(x.head(50).to_string(index=False))
+          except Exception as e:
+              print('kv metadata unavailable',repr(e))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rri-aem-tdx-key-${{ github.run_id }}
+          path: rri_aem_tdx_key
