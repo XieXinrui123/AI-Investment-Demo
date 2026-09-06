@@ -30,7 +30,7 @@ jobs:
           assert {'AnnualRRI10','AnnualRRI_mean','AnnualRRI_median_event','AnnualRRI_min_event','total_questions','event_type'}.issubset(d.columns)
           print('verified RRI input',len(d),'firm-years',d['firm_code'].nunique(),'firms')
           PY
-          sha256sum rri_op_input/* > rri_op_public/FROZEN_INPUT_SHA256.txt
+          find rri_op_input -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > rri_op_public/FROZEN_INPUT_SHA256.txt
       - name: Build public annual financial panel
         run: python rri_op/build_open_financial_panel.py 2>&1 | tee rri_op_public/build.log
       - name: Run exact frozen operating-performance specification
