@@ -1,46 +1,10 @@
-name: RRI Direct Historical Industry Probe
+name: RRI OP Staging
 
 on:
-  push:
-    branches: ["rri-op-20260906"]
+  workflow_dispatch:
 
 jobs:
-  probe-industry-direct:
+  staging:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: python -m pip install --upgrade pip requests pandas
-      - name: Probe Eastmoney JSON directly
-        run: |
-          mkdir -p rri_run/industry_direct_probe
-          python - <<'PY' > rri_run/industry_direct_probe/probe.txt 2>&1
-          import requests, json
-          u='https://datacenter-web.eastmoney.com/api/data/v1/get'
-          for y in [2015,2017,2020,2024]:
-              params={
-                'sortColumns':'UPDATE_DATE,SECURITY_CODE','sortTypes':'-1,-1',
-                'pageSize':'20','pageNumber':'1','reportName':'RPT_LICO_FN_CPD',
-                'columns':'ALL','filter':f"(REPORTDATE='{y}-12-31')",
-                'source':'WEB','client':'WEB'
-              }
-              print('\n===',y,'===')
-              try:
-                  r=requests.get(u,params=params,timeout=20,headers={'User-Agent':'Mozilla/5.0','Referer':'https://data.eastmoney.com/'})
-                  print('status',r.status_code,'bytes',len(r.content))
-                  j=r.json(); print('success',j.get('success'),'msg',j.get('message'))
-                  result=j.get('result') or {}; print('pages',result.get('pages'),'count',result.get('count'))
-                  data=result.get('data') or []
-                  if data:
-                      print('keys',sorted(data[0].keys()))
-                      print('sample_code',data[0].get('SECURITY_CODE'),'name',data[0].get('SECURITY_NAME_ABBR'),'industry',data[0].get('PUBLISHNAME'))
-              except Exception as e:
-                  print(type(e).__name__,repr(e))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rri-industry-direct-probe-${{ github.run_id }}
-          path: rri_run/industry_direct_probe
+      - run: echo staging
