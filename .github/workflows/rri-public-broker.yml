@@ -1,11 +1,11 @@
-name: RRI Open Financial Panel Probe
+name: RRI Open Financial Schema Probe
 
 on:
   push:
     branches: ["rri-run-20260906"]
 
 jobs:
-  probe-financial:
+  probe-financial-schema:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,23 +13,32 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip requests pandas pyarrow
-      - name: Inspect open financial parquet tree
+      - name: Inspect financial schemas
         run: |
-          mkdir -p rri_run/financial_probe
-          python - <<'PY' > rri_run/financial_probe/probe.txt 2>&1
-          import requests, json
+          mkdir -p rri_run/financial_schema_probe
+          python - <<'PY' > rri_run/financial_schema_probe/probe.txt 2>&1
+          import requests,pandas as pd,io
           repo='yifishbossman/financial-analyst-data-full'
-          urls=[
-            f'https://huggingface.co/api/datasets/{repo}/tree/main/parquet/financial?recursive=false&expand=false',
-            f'https://huggingface.co/api/datasets/{repo}/tree/main/parquet?recursive=false&expand=false',
-          ]
-          for u in urls:
-            print('\nURL',u)
-            r=requests.get(u,timeout=120)
-            print('STATUS',r.status_code,'BYTES',len(r.content))
-            print(r.text[:50000])
+          files=['balance_sheet.parquet','profit_sheet.parquet','cash_flow.parquet']
+          for fn in files:
+            u=f'https://huggingface.co/datasets/{repo}/resolve/main/parquet/financial/{fn}'
+            r=requests.get(u,timeout=180)
+            print('\n===',fn,'STATUS',r.status_code,'BYTES',len(r.content),'===')
+            if r.status_code!=200: continue
+            df=pd.read_parquet(io.BytesIO(r.content))
+            print('SHAPE',df.shape)
+            print('COLS',list(df.columns))
+            print('DTYPES\n',df.dtypes.to_string())
+            print('HEAD\n',df.head(8).to_string(index=False))
+            for c in df.columns:
+              lc=c.lower()
+              if any(k in lc for k in ['date','period','year','end']):
+                try:
+                  x=pd.to_datetime(df[c],errors='coerce')
+                  if x.notna().any(): print('DATE_RANGE',c,x.min(),x.max(),'NONNA',int(x.notna().sum()))
+                except Exception: pass
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: rri-financial-probe-${{ github.run_id }}
-          path: rri_run/financial_probe
+          name: rri-financial-schema-${{ github.run_id }}
+          path: rri_run/financial_schema_probe
