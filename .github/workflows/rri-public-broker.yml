@@ -1,87 +1,37 @@
-name: RRI Open F10 Index Probe
+name: RRI Fincast Structure Probe
 
 on:
   push:
     branches: ["rri-run-20260906"]
-  workflow_dispatch:
 
 jobs:
-  probe-open-f10:
+  probe-fincast:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
-        run: python -m pip install --upgrade pip requests pandas pyarrow
-      - name: Probe full F10 index and lite research files
+      - run: python -m pip install --upgrade pip requests pandas pyarrow
+      - name: Inspect fincast parquet
         run: |
-          mkdir -p rri_run/open_f10_probe
-          python - <<'PY' > rri_run/open_f10_probe/probe.txt 2>&1
-          import requests,pandas as pd,io,re,urllib.parse
-          s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
-          full='yifishbossman/financial-analyst-data-full'; lite='yifishbossman/financial-analyst-data-lite'
-          samples=['600754','601919','300058','000938','600879','600271','300124','002502','603588','601666','688102','688551']
-          print('=== FULL ROOT SUBTREES ===')
-          for sub in ['news_data','parquet']:
-            u=f'https://huggingface.co/api/datasets/{full}/tree/main/{sub}'
-            r=s.get(u,params={'limit':1000},timeout=60)
-            print(sub,'STATUS',r.status_code,'LEN',len(r.text))
-            if r.status_code==200:
-              items=r.json(); print('N',len(items)); print('PATHS',[x.get('path') for x in items[:80]])
-          print('\n=== FULL TDX_F10_INDEX ===')
-          raw=f'https://huggingface.co/datasets/{full}/resolve/main/parquet/tdx_f10_index.parquet'
-          r=s.get(raw,timeout=120)
-          print('INDEX_STATUS',r.status_code,'BYTES',len(r.content))
+          mkdir -p rri_run/fincast_probe
+          python - <<'PY' > rri_run/fincast_probe/probe.txt 2>&1
+          import requests,pandas as pd,io
+          repo='yifishbossman/financial-analyst-data-full'
+          u=f'https://huggingface.co/datasets/{repo}/resolve/main/parquet/fincast_daily_pred.parquet'
+          r=requests.get(u,timeout=120); print('STATUS',r.status_code,'BYTES',len(r.content))
           if r.status_code==200:
             df=pd.read_parquet(io.BytesIO(r.content))
-            print('INDEX_SHAPE',df.shape,'COLS',list(df.columns))
-            print(df.head(5).to_string(index=False))
-            # identify likely code/type/path columns
+            print('SHAPE',df.shape); print('COLS',list(df.columns)); print(df.dtypes.to_string())
+            print(df.head(20).to_string(index=False))
             for c in df.columns:
-              vals=df[c].astype(str)
-              hits=vals.str.contains('研报|研究报告|report',case=False,regex=True,na=False).sum()
-              if hits: print('REPORT_MATCH_COL',c,'N',int(hits),'EX',vals[vals.str.contains('研报|研究报告|report',case=False,regex=True,na=False)].head(10).tolist())
-            for code in samples:
-              mask=pd.Series(False,index=df.index)
-              for c in df.columns:
-                if df[c].dtype=='object' or 'str' in str(df[c].dtype):
-                  mask |= df[c].astype(str).str.contains(code,regex=False,na=False)
-              sub=df[mask]
-              print('\nINDEX_CODE',code,'N',len(sub))
-              if len(sub): print(sub.head(30).to_string(index=False))
-          print('\n=== LITE CODE FOLDERS + RESEARCH TEXT ===')
-          for code in samples:
-            folder=('sh' if code.startswith(('5','6','9')) else 'sz')+code
-            u=f'https://huggingface.co/api/datasets/{lite}/tree/main/{folder}'
-            r=s.get(u,params={'limit':100},timeout=45)
-            print('\nLITE',code,'STATUS',r.status_code)
-            if r.status_code!=200: continue
-            items=r.json(); names=[x.get('path','') for x in items]
-            research=[p for p in names if '研究报告_' in p and p.endswith('.txt')]
-            print('FILES',len(names),'RESEARCH',research)
-            if research:
-              path=sorted(research)[-1]
-              raw='https://huggingface.co/datasets/'+lite+'/resolve/main/'+urllib.parse.quote(path,safe='/')
-              rr=s.get(raw,timeout=60); rr.encoding=rr.apparent_encoding or 'utf-8'
-              print('FETCH',path,rr.status_code,'LEN',len(rr.text))
-              txt=rr.text
-              pos=txt.find('每股收益预测')
-              print('EPS_POS',pos)
-              if pos>=0:
-                block=txt[pos:pos+30000]
-                dates=re.findall(r'20\d{2}-\d{2}-\d{2}',block)
-                uniq=[]
-                for d in dates:
-                  if d not in uniq: uniq.append(d)
-                print('DATES_N',len(uniq),'EARLIEST',min(uniq) if uniq else None,'LATEST',max(uniq) if uniq else None)
-                print('DATES',uniq[:30])
-                print('BLOCK_HEAD',block[:3500].replace('\r',''))
+              s=df[c]
+              if 'date' in c.lower() or 'time' in c.lower():
+                x=pd.to_datetime(s,errors='coerce'); print('DATE_RANGE',c,x.min(),x.max(),'NONNA',x.notna().sum())
+              if s.dtype=='object': print('UNIQUE_SAMPLE',c,s.dropna().astype(str).head(10).tolist())
           PY
-      - name: Upload probe
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: rri-open-f10-probe-${{ github.run_id }}
-          path: rri_run/open_f10_probe
-          if-no-files-found: error
+          name: rri-fincast-probe-${{ github.run_id }}
+          path: rri_run/fincast_probe
