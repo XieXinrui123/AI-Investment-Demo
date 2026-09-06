@@ -1,0 +1,65 @@
+{
+  "freeze_timestamp_local": "2026-09-06T13:10:00+08:00",
+  "status": "FROZEN_BEFORE_ANY_RRI_AEM_COEFFICIENT_IS_ESTIMATED",
+  "research_question": "Conditional on receiving a stock-exchange inquiry, does higher regulatory response quality predict less subsequent accrual-based earnings management?",
+  "rri_sample": {
+    "version": "Clean Core v2.3m",
+    "firm_years": 232,
+    "firms": 217,
+    "primary_rri": "AnnualRRI10 = AnnualRRI_mean / 10",
+    "rri_year": "calendar year of first substantive response after current source repair"
+  },
+  "primary_outcome": {
+    "name": "ABS_DA_tplus1",
+    "model": "cross-sectional Modified Jones",
+    "total_accruals": "TA_y = NetIncome_y - CFO_y",
+    "scale": "lagged TotalAssets_(y-1)",
+    "peer_regression": "TA_y/A_(y-1) = a1*(1/A_(y-1)) + a2*((DeltaRevenue_y-DeltaAR_y)/A_(y-1)) + a3*(PPE_y/A_(y-1)) + error_y",
+    "DA": "peer-regression residual",
+    "ABS_DA": "absolute value of DA",
+    "prediction": "beta_RRI10 < 0"
+  },
+  "peer_estimation": {
+    "universe": "all A-share nonfinancial firm-years available from the public full financial panel",
+    "fiscal_years_needed": "2013-2025 raw annual data; DA estimated for 2014-2025",
+    "cell": "historical Industry x fiscal year",
+    "minimum_cell_N": 20,
+    "no_threshold_tuning": true,
+    "financial_industry_exclusion_keywords": ["银行", "保险", "证券", "多元金融", "金融服务", "非银金融"],
+    "continuous_ratio_winsorization": "1st/99th percentiles within fiscal year before peer regression"
+  },
+  "field_policy": {
+    "required": ["TotalAssets", "NetIncome", "CFO", "Revenue", "AccountsReceivable", "PPE"],
+    "PPE_rule": "must use a direct fixed-assets/PPE field from the public full historical financial source; do not drop PPE and do not create a proxy after seeing results",
+    "annual_record": "fiscal year end 12-31; latest final/announcement version within stock-year where duplicate versions exist"
+  },
+  "industry_policy": {
+    "source": "Eastmoney RPT_LICO_FN_CPD PUBLISHNAME at fiscal-year 12-31",
+    "fallback": "same-firm nearest historical industry within +/-1 year, prior year first; unresolved remains UNKNOWN",
+    "no_rri_based_industry_choice": true
+  },
+  "main_regression": {
+    "equation": "ABS_DA_(t+1) = alpha + beta*RRI10_t + rho*ABS_DA_(t-1) + Size_t + Leverage_t + ROA_t + SalesGrowth_t + Cash_t + ln(1+nQuestions_t) + YearFE + IndustryFE + InquiryTypeFE + error",
+    "Size": "ln(TotalAssets_t)",
+    "Leverage": "TotalLiabilities_t / TotalAssets_t",
+    "ROA": "NetIncome_t / TotalAssets_t",
+    "SalesGrowth": "Revenue_t / Revenue_(t-1) - 1",
+    "Cash": "Cash_t / TotalAssets_t",
+    "standard_errors": "cluster by firm",
+    "primary_sample": "nonfinancial RRI firm-years with valid ABS_DA_(t-1), ABS_DA_(t+1), and t controls"
+  },
+  "prespecified_robustness": {
+    "first_event_only": "keep earliest RRI firm-year per firm",
+    "signed_DA": "descriptive/secondary only; cannot rescue failed ABS_DA primary",
+    "alternate_RRI": ["AnnualRRI_median_event", "AnnualRRI_min_event"],
+    "no_REM_opening_before_primary_decision": true
+  },
+  "decision_rule": {
+    "GO_requires_all": [
+      "primary beta_RRI10 < 0",
+      "primary two-sided firm-clustered p < 0.10",
+      "first-event-only beta_RRI10 < 0"
+    ],
+    "otherwise": "NO-GO for AEM mainline; do not change peer N, Modified Jones equation, winsorization, controls, or RRI aggregation to rescue significance"
+  }
+}
