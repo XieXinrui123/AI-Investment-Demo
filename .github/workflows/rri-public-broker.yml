@@ -1,4 +1,4 @@
-name: RRI HuggingFace Open F10 Probe
+name: RRI Open F10 Index Probe
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  probe-hf-f10:
+  probe-open-f10:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,58 +14,74 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: python -m pip install --upgrade pip requests pandas
-      - name: Probe open F10 historical analyst forecasts
+        run: python -m pip install --upgrade pip requests pandas pyarrow
+      - name: Probe full F10 index and lite research files
         run: |
-          mkdir -p rri_run/hf_f10_probe
-          python - <<'PY' > rri_run/hf_f10_probe/probe.txt 2>&1
-          import requests,re,urllib.parse
-          repo='yifishbossman/financial-analyst-data-full'
-          samples=[
-            ('600754','2015-01-17'),('601919','2015-12-25'),('300058','2015-11-13'),
-            ('000938','2015-10-28'),('600879','2015-09-16'),('600271','2018-06-01'),
-            ('300124','2018-06-01'),('002502','2019-06-01'),('603588','2020-06-01'),
-            ('601666','2020-06-01'),('688102','2023-06-01'),('688551','2023-06-01')
-          ]
+          mkdir -p rri_run/open_f10_probe
+          python - <<'PY' > rri_run/open_f10_probe/probe.txt 2>&1
+          import requests,pandas as pd,io,re,urllib.parse
           s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
-          for code,event in samples:
+          full='yifishbossman/financial-analyst-data-full'; lite='yifishbossman/financial-analyst-data-lite'
+          samples=['600754','601919','300058','000938','600879','600271','300124','002502','603588','601666','688102','688551']
+          print('=== FULL ROOT SUBTREES ===')
+          for sub in ['news_data','parquet']:
+            u=f'https://huggingface.co/api/datasets/{full}/tree/main/{sub}'
+            r=s.get(u,params={'limit':1000},timeout=60)
+            print(sub,'STATUS',r.status_code,'LEN',len(r.text))
+            if r.status_code==200:
+              items=r.json(); print('N',len(items)); print('PATHS',[x.get('path') for x in items[:80]])
+          print('\n=== FULL TDX_F10_INDEX ===')
+          raw=f'https://huggingface.co/datasets/{full}/resolve/main/parquet/tdx_f10_index.parquet'
+          r=s.get(raw,timeout=120)
+          print('INDEX_STATUS',r.status_code,'BYTES',len(r.content))
+          if r.status_code==200:
+            df=pd.read_parquet(io.BytesIO(r.content))
+            print('INDEX_SHAPE',df.shape,'COLS',list(df.columns))
+            print(df.head(5).to_string(index=False))
+            # identify likely code/type/path columns
+            for c in df.columns:
+              vals=df[c].astype(str)
+              hits=vals.str.contains('研报|研究报告|report',case=False,regex=True,na=False).sum()
+              if hits: print('REPORT_MATCH_COL',c,'N',int(hits),'EX',vals[vals.str.contains('研报|研究报告|report',case=False,regex=True,na=False)].head(10).tolist())
+            for code in samples:
+              mask=pd.Series(False,index=df.index)
+              for c in df.columns:
+                if df[c].dtype=='object' or 'str' in str(df[c].dtype):
+                  mask |= df[c].astype(str).str.contains(code,regex=False,na=False)
+              sub=df[mask]
+              print('\nINDEX_CODE',code,'N',len(sub))
+              if len(sub): print(sub.head(30).to_string(index=False))
+          print('\n=== LITE CODE FOLDERS + RESEARCH TEXT ===')
+          for code in samples:
             folder=('sh' if code.startswith(('5','6','9')) else 'sz')+code
-            api=f'https://huggingface.co/api/datasets/{repo}/tree/main/{folder}'
-            try:
-              r=s.get(api,params={'limit':100},timeout=30)
-              print('\nCODE',code,'EVENT',event,'LIST_STATUS',r.status_code,'LEN',len(r.text))
-              if r.status_code!=200:
-                print(r.text[:500]); continue
-              items=r.json()
-              names=[x.get('path','') for x in items if '研究报告_' in x.get('path','') and x.get('path','').endswith('.txt')]
-              print('REPORT_FILES',len(names),names[-8:])
-              if not names: continue
-              # inspect the largest/newest-named snapshot; these F10 snapshots preserve historical report rows
-              path=sorted(names)[-1]
-              raw='https://huggingface.co/datasets/'+repo+'/resolve/main/'+urllib.parse.quote(path,safe='/')
-              rr=s.get(raw,timeout=60)
-              print('FETCH',path,rr.status_code,'BYTES',len(rr.content))
-              if rr.status_code!=200: continue
-              rr.encoding=rr.apparent_encoding or 'utf-8'
+            u=f'https://huggingface.co/api/datasets/{lite}/tree/main/{folder}'
+            r=s.get(u,params={'limit':100},timeout=45)
+            print('\nLITE',code,'STATUS',r.status_code)
+            if r.status_code!=200: continue
+            items=r.json(); names=[x.get('path','') for x in items]
+            research=[p for p in names if '研究报告_' in p and p.endswith('.txt')]
+            print('FILES',len(names),'RESEARCH',research)
+            if research:
+              path=sorted(research)[-1]
+              raw='https://huggingface.co/datasets/'+lite+'/resolve/main/'+urllib.parse.quote(path,safe='/')
+              rr=s.get(raw,timeout=60); rr.encoding=rr.apparent_encoding or 'utf-8'
+              print('FETCH',path,rr.status_code,'LEN',len(rr.text))
               txt=rr.text
-              print('HAS_EPS_SECTION','每股收益预测' in txt,'TEXT_LEN',len(txt))
               pos=txt.find('每股收益预测')
+              print('EPS_POS',pos)
               if pos>=0:
-                block=txt[pos:pos+12000]
+                block=txt[pos:pos+30000]
                 dates=re.findall(r'20\d{2}-\d{2}-\d{2}',block)
-                # preserve order, unique
                 uniq=[]
                 for d in dates:
                   if d not in uniq: uniq.append(d)
-                print('EPS_DATES_N',len(uniq),'FIRST_LAST',uniq[-5:] if uniq else [],uniq[:5] if uniq else [])
-                print('EARLIEST',min(uniq) if uniq else None,'LATEST',max(uniq) if uniq else None)
-                print('BLOCK_HEAD',block[:2500].replace('\r',''))
-            except Exception as e:
-              print('ERR',code,repr(e))
+                print('DATES_N',len(uniq),'EARLIEST',min(uniq) if uniq else None,'LATEST',max(uniq) if uniq else None)
+                print('DATES',uniq[:30])
+                print('BLOCK_HEAD',block[:3500].replace('\r',''))
           PY
       - name: Upload probe
         uses: actions/upload-artifact@v4
         with:
-          name: rri-hf-f10-probe-${{ github.run_id }}
-          path: rri_run/hf_f10_probe
+          name: rri-open-f10-probe-${{ github.run_id }}
+          path: rri_run/open_f10_probe
           if-no-files-found: error
