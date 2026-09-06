@@ -1,11 +1,11 @@
-name: RRI Frozen Operating Performance Public Run
+name: RRI Frozen Operating Performance Public Run FAST
 
 on:
   push:
     branches: ["rri-op-20260906"]
 
 jobs:
-  operating-performance:
+  operating-performance-fast:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -17,10 +17,10 @@ jobs:
         run: python -m pip install --upgrade pip pandas numpy requests pyarrow statsmodels
       - name: Restore frozen inputs
         run: |
-          mkdir -p rri_op_input rri_op_results rri_op_public
+          mkdir -p rri_op_input rri_op_results_fast rri_op_public_fast
           cp rri_op/RRI_FIRM_YEAR_232_MIN.csv rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv
           base64 -d rri_op/test_rri_operating_performance_v1_0.py.gz.b64 | gzip -d > rri_op_input/test_rri_operating_performance_v1_0.py
-          python -m py_compile rri_op_input/test_rri_operating_performance_v1_0.py rri_op/build_open_financial_panel.py
+          python -m py_compile rri_op_input/test_rri_operating_performance_v1_0.py rri_op/build_open_financial_panel_fast.py
           python - <<'PY'
           import pandas as pd
           p='rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv'
@@ -30,24 +30,24 @@ jobs:
           assert {'AnnualRRI10','AnnualRRI_mean','AnnualRRI_median_event','AnnualRRI_min_event','total_questions','event_type'}.issubset(d.columns)
           print('verified RRI input',len(d),'firm-years',d['firm_code'].nunique(),'firms')
           PY
-          find rri_op_input -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > rri_op_public/FROZEN_INPUT_SHA256.txt
-      - name: Build public annual financial panel
-        run: python rri_op/build_open_financial_panel.py 2>&1 | tee rri_op_public/build.log
+          find rri_op_input -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum > rri_op_public_fast/FROZEN_INPUT_SHA256.txt
+      - name: Build public annual financial panel concurrently
+        run: python rri_op/build_open_financial_panel_fast.py 2>&1 | tee rri_op_public_fast/build.log
       - name: Run exact frozen operating-performance specification
         run: |
           python rri_op_input/test_rri_operating_performance_v1_0.py \
-            --financial rri_op_public/OPEN_FINANCIAL_PANEL_2014_2025.csv \
+            --financial rri_op_public_fast/OPEN_FINANCIAL_PANEL_2014_2025.csv \
             --rri rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv \
-            --outdir rri_op_results 2>&1 | tee rri_op_results/regression.log
+            --outdir rri_op_results_fast 2>&1 | tee rri_op_results_fast/regression.log
       - name: Produce result summary and provenance manifest
         run: |
           python - <<'PY'
           import json, pandas as pd
           from pathlib import Path
-          p=Path('rri_op_results')
+          p=Path('rri_op_results_fast')
           res=pd.read_csv(p/'RRI_OPERATING_PERFORMANCE_RESULTS.csv')
           cov=pd.read_csv(p/'RRI_OPERATING_PERFORMANCE_COVERAGE.csv')
-          qc=pd.read_csv('rri_op_public/RRI_FINANCIAL_COVERAGE_AUDIT.csv')
+          qc=pd.read_csv('rri_op_public_fast/RRI_FINANCIAL_COVERAGE_AUDIT.csv')
           cols=['outcome','model','rri_variable','first_event_only','N','beta_RRI10','se_cluster','p_cluster','r2','note']
           lines=['=== COVERAGE ===',cov.to_string(index=False),'','=== RESULTS ===',res[cols].to_string(index=False),'',f"core pre={int(qc.pre_core.sum())} t={int(qc.t_core.sum())} post={int(qc.post_core.sum())} pre_post={int(qc.pre_post_core.sum())} all3={int(qc.pre_t_post_core.sum())}"]
           primary=res[(res.outcome=='roa_post')&(res.model=='P3')&(res.rri_variable=='AnnualRRI10')&(res.first_event_only==0)]
@@ -58,18 +58,19 @@ jobs:
             'branch':'rri-op-20260906','rri_sample_firm_years':232,
             'primary_outcome':'ROA_(t+1)','primary_model':'P3','rri_scale':'per +10 RRI points',
             'financial_source':'Hugging Face yifishbossman/financial-analyst-data-full balance_sheet.parquet + profit_sheet.parquet',
-            'industry_source':'Eastmoney RPT_LICO_FN_CPD PUBLISHNAME, annual 12/31',
+            'industry_source':'Eastmoney RPT_LICO_FN_CPD PUBLISHNAME, annual 12/31, concurrently fetched',
             'industry_fallback':'nearest historical same-firm +/-1 year; prior year first; unresolved=UNKNOWN',
             'annual_statement_selection':'12/31 rows; latest announcement/final-announcement per stock-year',
-            'result_governance':'primary P3 ROA judged first; secondary outcomes are not substitutes if primary fails'
+            'result_governance':'primary P3 ROA judged first; secondary outcomes are not substitutes if primary fails',
+            'collection_change_only':'Concurrency changes collection speed only; source, fields, years and frozen regression are unchanged.'
           }
           (p/'RUN_MANIFEST.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
           print((p/'SUMMARY.txt').read_text())
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: rri-operating-performance-public-${{ github.run_id }}
+          name: rri-operating-performance-public-fast-${{ github.run_id }}
           path: |
             rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv
-            rri_op_public
-            rri_op_results
+            rri_op_public_fast
+            rri_op_results_fast
