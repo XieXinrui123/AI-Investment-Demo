@@ -15,12 +15,81 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: python -m pip install --upgrade pip pandas numpy requests statsmodels
+      - name: Build execution-only concurrent runner
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('rri_run/run.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('from pathlib import Path\n', 'from pathlib import Path\nfrom concurrent.futures import ThreadPoolExecutor, as_completed\n')
+          old_prices='''def prices(sess,ev):
+           z=[]
+           for c,g in ev.groupby('firm_code'):
+            beg=(g.response_date.min()-pd.Timedelta(days=45)).strftime('%Y%m%d'); end=g.response_date.max().strftime('%Y%m%d'); m='1' if c.startswith(('5','6','9')) else '0'
+            q={'secid':f'{m}.{c}','klt':'101','fqt':'0','beg':beg,'end':end,'lmt':'1000000','fields1':'f1,f2,f3,f4,f5,f6','fields2':'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61'}
+            try: kl=(getj(sess,PRICE,q).get('data') or {}).get('klines') or []
+            except Exception as e: print('PRICE_FAIL',c,e); continue
+            for s in kl:
+             a=str(s).split(',')
+             if len(a)>=3:
+              try: z.append([c,pd.Timestamp(a[0]),float(a[2])])
+              except: pass
+            time.sleep(.05)
+           return pd.DataFrame(z,columns=['stock_code','trade_date','close_raw'])
+          '''
+          new_prices='''def prices(sess,ev):
+           def one(t):
+            c,beg,end=t; m='1' if c.startswith(('5','6','9')) else '0'
+            q={'secid':f'{m}.{c}','klt':'101','fqt':'0','beg':beg,'end':end,'lmt':'1000000','fields1':'f1,f2,f3,f4,f5,f6','fields2':'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61'}
+            ss=requests.Session(); ss.headers.update({'User-Agent':UA,'Referer':'https://quote.eastmoney.com/'})
+            try: kl=(getj(ss,PRICE,q).get('data') or {}).get('klines') or []
+            except Exception as e: print('PRICE_FAIL',c,e,flush=True); return []
+            z=[]
+            for line in kl:
+             a=str(line).split(',')
+             if len(a)>=3:
+              try: z.append([c,pd.Timestamp(a[0]),float(a[2])])
+              except: pass
+            return z
+           tasks=[(c,(g.response_date.min()-pd.Timedelta(days=45)).strftime('%Y%m%d'),g.response_date.max().strftime('%Y%m%d')) for c,g in ev.groupby('firm_code')]
+           z=[]
+           with ThreadPoolExecutor(max_workers=6) as ex:
+            for rows in ex.map(one,tasks): z.extend(rows)
+           return pd.DataFrame(z,columns=['stock_code','trade_date','close_raw'])
+          '''
+          if old_prices not in s: raise SystemExit('price patch target not found')
+          s=s.replace(old_prices,new_prices)
+          old_reports=''' raw=[]
+           for i,(c,g) in enumerate(ev.groupby('firm_code'),1):
+            rr=reports(s,c,g.pre_start.min().strftime('%Y-%m-%d'),g.post_end.max().strftime('%Y-%m-%d'))
+            for r in rr: r=dict(r); r['_query_stock_code']=c; raw.append(r)
+            print(f'REPORTS {i}/{ev.firm_code.nunique()} {c} {len(rr)}')
+          '''
+          new_reports=''' raw=[]
+           groups=[(c,g.pre_start.min().strftime('%Y-%m-%d'),g.post_end.max().strftime('%Y-%m-%d')) for c,g in ev.groupby('firm_code')]
+           def fetch_one(t):
+            c,b,e=t
+            ss=requests.Session(); ss.headers.update({'User-Agent':UA,'Referer':'https://data.eastmoney.com/','Accept':'application/json,text/javascript,*/*'})
+            return c,reports(ss,c,b,e)
+           with ThreadPoolExecutor(max_workers=6) as ex:
+            futs=[ex.submit(fetch_one,t) for t in groups]
+            for i,f in enumerate(as_completed(futs),1):
+             c,rr=f.result()
+             for r in rr: r=dict(r); r['_query_stock_code']=c; raw.append(r)
+             print(f'REPORTS {i}/{len(groups)} {c} {len(rr)}',flush=True)
+          '''
+          if old_reports not in s: raise SystemExit('report patch target not found')
+          s=s.replace(old_reports,new_reports)
+          Path('rri_run/run_fast.py').write_text(s,encoding='utf-8')
+          PY
+          python -m py_compile rri_run/run_fast.py
       - name: Run frozen public broker screen
-        run: python rri_run/run.py
+        run: python rri_run/run_fast.py
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rri-public-broker-results
+          name: rri-public-broker-results-${{ github.run_id }}
           path: rri_run/results
           if-no-files-found: error
