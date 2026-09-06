@@ -18,7 +18,7 @@ jobs:
       - name: Restore frozen inputs
         run: |
           mkdir -p rri_op_input rri_op_results rri_op_public
-          base64 -d rri_op/RRI_FIRM_YEAR_232_MIN.csv.gz.b64 | gzip -d > rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv
+          cp rri_op/RRI_FIRM_YEAR_232_MIN.csv rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv
           base64 -d rri_op/test_rri_operating_performance_v1_0.py.gz.b64 | gzip -d > rri_op_input/test_rri_operating_performance_v1_0.py
           python -m py_compile rri_op_input/test_rri_operating_performance_v1_0.py rri_op/build_open_financial_panel.py
           python - <<'PY'
