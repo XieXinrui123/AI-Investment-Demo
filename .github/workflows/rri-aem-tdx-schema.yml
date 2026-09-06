@@ -1,0 +1,38 @@
+name: RRI AEM TDX Schema Probe
+
+on:
+  push:
+    branches: ["rri-aem-20260906"]
+
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip duckdb pandas
+      - name: Read remote parquet schema without downloading full table
+        run: |
+          mkdir -p rri_aem_tdx_schema
+          python - <<'PY' > rri_aem_tdx_schema/schema.txt 2>&1
+          import duckdb, re
+          url='https://huggingface.co/datasets/yifishbossman/financial-analyst-data-full/resolve/main/parquet/financial/tdx_financial.parquet'
+          con=duckdb.connect()
+          con.execute('INSTALL httpfs; LOAD httpfs')
+          q="DESCRIBE SELECT * FROM read_parquet(?)"
+          s=con.execute(q,[url]).fetchdf()
+          print('N_COLUMNS',len(s))
+          print(s.to_string(index=False))
+          pats=['fix','fixed','ppe','asset','receiv','revenue','income','cash','operat','report','year','date','gdzc','yszk','yysr','jyxj','zcfz']
+          print('\nCANDIDATE_COLUMNS')
+          for c in s['column_name'].astype(str):
+              lc=c.lower()
+              if any(p in lc for p in pats):
+                  print(c)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rri-aem-tdx-schema-${{ github.run_id }}
+          path: rri_aem_tdx_schema
