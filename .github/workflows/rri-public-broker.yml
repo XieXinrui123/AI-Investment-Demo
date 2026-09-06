@@ -18,9 +18,18 @@ jobs:
       - name: Restore frozen inputs
         run: |
           mkdir -p rri_op_input rri_op_results rri_op_public
-          base64 -d rri_op/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv.gz.b64 | gzip -d > rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv
+          base64 -d rri_op/RRI_FIRM_YEAR_232_MIN.csv.gz.b64 | gzip -d > rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv
           base64 -d rri_op/test_rri_operating_performance_v1_0.py.gz.b64 | gzip -d > rri_op_input/test_rri_operating_performance_v1_0.py
           python -m py_compile rri_op_input/test_rri_operating_performance_v1_0.py rri_op/build_open_financial_panel.py
+          python - <<'PY'
+          import pandas as pd
+          p='rri_op_input/RRI_FIRM_YEAR_232_v2.3m_OP_COMPAT.csv'
+          d=pd.read_csv(p,dtype={'firm_code':str})
+          assert len(d)==232, len(d)
+          assert d['firm_code'].str.zfill(6).nunique()==217, d['firm_code'].nunique()
+          assert {'AnnualRRI10','AnnualRRI_mean','AnnualRRI_median_event','AnnualRRI_min_event','total_questions','event_type'}.issubset(d.columns)
+          print('verified RRI input',len(d),'firm-years',d['firm_code'].nunique(),'firms')
+          PY
           sha256sum rri_op_input/* > rri_op_public/FROZEN_INPUT_SHA256.txt
       - name: Build public annual financial panel
         run: python rri_op/build_open_financial_panel.py 2>&1 | tee rri_op_public/build.log
@@ -46,11 +55,8 @@ jobs:
               r=primary.iloc[0]; lines += ['',f"PRIMARY_P3_ROA N={int(r.N)} beta10={r.beta_RRI10} se={r.se_cluster} p={r.p_cluster} r2={r.r2}"]
           (p/'SUMMARY.txt').write_text('\n'.join(lines),encoding='utf-8')
           manifest={
-            'branch':'rri-op-20260906',
-            'rri_sample_firm_years':232,
-            'primary_outcome':'ROA_(t+1)',
-            'primary_model':'P3',
-            'rri_scale':'per +10 RRI points',
+            'branch':'rri-op-20260906','rri_sample_firm_years':232,
+            'primary_outcome':'ROA_(t+1)','primary_model':'P3','rri_scale':'per +10 RRI points',
             'financial_source':'Hugging Face yifishbossman/financial-analyst-data-full balance_sheet.parquet + profit_sheet.parquet',
             'industry_source':'Eastmoney RPT_LICO_FN_CPD PUBLISHNAME, annual 12/31',
             'industry_fallback':'nearest historical same-firm +/-1 year; prior year first; unresolved=UNKNOWN',
