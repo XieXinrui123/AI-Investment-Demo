@@ -1,11 +1,11 @@
-name: RRI Fincast Structure Probe
+name: RRI Open Financial Panel Probe
 
 on:
   push:
     branches: ["rri-run-20260906"]
 
 jobs:
-  probe-fincast:
+  probe-financial:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,25 +13,23 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip requests pandas pyarrow
-      - name: Inspect fincast parquet
+      - name: Inspect open financial parquet tree
         run: |
-          mkdir -p rri_run/fincast_probe
-          python - <<'PY' > rri_run/fincast_probe/probe.txt 2>&1
-          import requests,pandas as pd,io
+          mkdir -p rri_run/financial_probe
+          python - <<'PY' > rri_run/financial_probe/probe.txt 2>&1
+          import requests, json
           repo='yifishbossman/financial-analyst-data-full'
-          u=f'https://huggingface.co/datasets/{repo}/resolve/main/parquet/fincast_daily_pred.parquet'
-          r=requests.get(u,timeout=120); print('STATUS',r.status_code,'BYTES',len(r.content))
-          if r.status_code==200:
-            df=pd.read_parquet(io.BytesIO(r.content))
-            print('SHAPE',df.shape); print('COLS',list(df.columns)); print(df.dtypes.to_string())
-            print(df.head(20).to_string(index=False))
-            for c in df.columns:
-              s=df[c]
-              if 'date' in c.lower() or 'time' in c.lower():
-                x=pd.to_datetime(s,errors='coerce'); print('DATE_RANGE',c,x.min(),x.max(),'NONNA',x.notna().sum())
-              if s.dtype=='object': print('UNIQUE_SAMPLE',c,s.dropna().astype(str).head(10).tolist())
+          urls=[
+            f'https://huggingface.co/api/datasets/{repo}/tree/main/parquet/financial?recursive=false&expand=false',
+            f'https://huggingface.co/api/datasets/{repo}/tree/main/parquet?recursive=false&expand=false',
+          ]
+          for u in urls:
+            print('\nURL',u)
+            r=requests.get(u,timeout=120)
+            print('STATUS',r.status_code,'BYTES',len(r.content))
+            print(r.text[:50000])
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: rri-fincast-probe-${{ github.run_id }}
-          path: rri_run/fincast_probe
+          name: rri-financial-probe-${{ github.run_id }}
+          path: rri_run/financial_probe
