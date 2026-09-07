@@ -1,0 +1,32 @@
+name: Historical Detail QA Institutional Visits
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/rri_institution_visit_historical_detail_qa.yml']
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install requests
+      - run: |
+          python - <<'PY'
+          import requests, json
+          u='https://datacenter-web.eastmoney.com/api/data/v1/get'
+          tests={
+            'detail_all_2018':'(IS_SOURCE="1")(RECEIVE_START_DATE>=\'2018-01-01\')(RECEIVE_START_DATE<=\'2018-12-31\')',
+            'detail_000703_2015_2024':'(IS_SOURCE="1")(SECURITY_CODE="000703")(RECEIVE_START_DATE>=\'2015-01-01\')(RECEIVE_START_DATE<=\'2024-12-31\')',
+            'detail_002438_2015_2024':'(IS_SOURCE="1")(SECURITY_CODE="002438")(RECEIVE_START_DATE>=\'2015-01-01\')(RECEIVE_START_DATE<=\'2024-12-31\')',
+            'detail_known_600017_2026':'(IS_SOURCE="1")(SECURITY_CODE="600017")(RECEIVE_START_DATE>=\'2026-09-01\')(RECEIVE_START_DATE<=\'2026-09-07\')'
+          }
+          for n,f in tests.items():
+            p={'sortColumns':'NOTICE_DATE,RECEIVE_START_DATE,SECURITY_CODE,NUMBERNEW','sortTypes':'-1,-1,1,-1','pageSize':'5','pageNumber':'1','reportName':'RPT_ORG_SURVEY','columns':'ALL','source':'WEB','client':'WEB','quoteType':'0','filter':f}
+            o=requests.get(u,params=p,timeout=30).json(); r=o.get('result')
+            print('\n###',n,'success',o.get('success'),'code',o.get('code'),'msg',o.get('message'),'null',r is None)
+            if r:
+              print('count',r.get('count'),'pages',r.get('pages'))
+              for x in (r.get('data') or [])[:3]: print(json.dumps(x,ensure_ascii=False)[:1200])
+          PY
