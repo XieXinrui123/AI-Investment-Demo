@@ -1,0 +1,94 @@
+name: RRI Modified Jones Real Run
+
+on:
+  push:
+    branches:
+      - rri-modified-jones-run-20260907
+  workflow_dispatch:
+
+jobs:
+  run-modified-jones:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy requests statsmodels
+
+      - name: Rebuild clean RRI input
+        run: |
+          cat rri_modified_jones/rri_part_0.csv rri_modified_jones/rri_part_1.csv rri_modified_jones/rri_part_2.csv rri_modified_jones/rri_part_3.csv > rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv
+          python - <<'PY'
+          import pandas as pd
+          p='rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv'
+          d=pd.read_csv(p,dtype={'firm_code':str})
+          print('RRI rows',len(d),'firms',d.firm_code.nunique())
+          assert len(d)==232, len(d)
+          assert not d.event_ids.astype(str).str.contains('EVENT00053').any()
+          PY
+
+      - name: Fetch full A-share annual financials
+        run: |
+          python rri_modified_jones/fetch_ashare_modified_jones_inputs_v1_0.py \
+            --start-year 2013 --end-year 2025 \
+            --outdir rri_modified_jones/ashare_modified_jones_inputs
+
+      - name: Enforce complete-year fetch
+        run: |
+          python - <<'PY'
+          import pandas as pd, json, pathlib
+          b=pathlib.Path('rri_modified_jones/ashare_modified_jones_inputs')
+          s=pd.read_csv(b/'FETCH_STATUS.csv')
+          print(s.to_string(index=False))
+          assert set(s.fiscal_year.astype(int))==set(range(2013,2026))
+          bad=s[s.status!='OK']
+          assert bad.empty, bad.to_string(index=False)
+          q=json.loads((b/'FETCH_QC.json').read_text())
+          print(json.dumps(q,ensure_ascii=False,indent=2))
+          assert q['rows']>20000
+          assert q['firms']>2500
+          for k in ['total_assets','accounts_receivable','fixed_assets','operating_revenue','net_profit','net_operating_cashflow','industry_name']:
+              assert q['coverage'][k]>0.50, (k,q['coverage'][k])
+          PY
+
+      - name: Run frozen Modified Jones and RRI regressions
+        run: |
+          python rri_modified_jones/run_rri_modified_jones_v1_0.py \
+            --financial rri_modified_jones/ashare_modified_jones_inputs/FULL_A_SHARE_MODIFIED_JONES_INPUTS_2013_2025.csv \
+            --rri rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv \
+            --outdir rri_modified_jones/rri_modified_jones_results
+
+      - name: Print primary result
+        run: |
+          echo '===== COVERAGE ====='
+          cat rri_modified_jones/rri_modified_jones_results/04_COVERAGE.csv
+          echo '===== REGRESSIONS ====='
+          cat rri_modified_jones/rri_modified_jones_results/05_REGRESSION_RESULTS.csv
+          echo '===== STATUS ====='
+          cat rri_modified_jones/rri_modified_jones_results/06_STATUS.json
+
+      - name: Package outputs
+        run: |
+          mkdir -p rri_modified_jones/artifact_bundle/financial_inputs
+          cp rri_modified_jones/ashare_modified_jones_inputs/FETCH_STATUS.csv rri_modified_jones/artifact_bundle/financial_inputs/
+          cp rri_modified_jones/ashare_modified_jones_inputs/FETCH_QC.json rri_modified_jones/artifact_bundle/financial_inputs/
+          cp rri_modified_jones/ashare_modified_jones_inputs/FULL_A_SHARE_MODIFIED_JONES_INPUTS_2013_2025.csv rri_modified_jones/artifact_bundle/financial_inputs/
+          cp -r rri_modified_jones/rri_modified_jones_results rri_modified_jones/artifact_bundle/
+          cp rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv rri_modified_jones/artifact_bundle/
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RRI_MODIFIED_JONES_REAL_RUN
+          path: rri_modified_jones/artifact_bundle
+          retention-days: 30
+          compression-level: 6
