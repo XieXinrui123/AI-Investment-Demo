@@ -1,0 +1,117 @@
+name: RRI Modified Jones Parallel Run
+
+on:
+  push:
+    branches:
+      - rri-modified-jones-run-20260907
+  workflow_dispatch:
+
+jobs:
+  fetch-year:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        year: [2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy requests
+      - name: Fetch one annual cross-section
+        run: |
+          python rri_modified_jones/fetch_fixed_wrapper.py \
+            --start-year ${{ matrix.year }} --end-year ${{ matrix.year }} \
+            --outdir rri_modified_jones/year_${{ matrix.year }}
+      - name: Validate annual file
+        run: |
+          python - <<'PY'
+          import pandas as pd, pathlib, json, os
+          y=int('${{ matrix.year }}')
+          b=pathlib.Path(f'rri_modified_jones/year_{y}')
+          s=pd.read_csv(b/'FETCH_STATUS.csv')
+          print(s.to_string(index=False))
+          assert len(s)==1 and int(s.iloc[0].fiscal_year)==y and s.iloc[0].status=='OK'
+          d=pd.read_csv(b/f'annual_{y}.csv',dtype={'firm_code':str})
+          print('year',y,'rows',len(d),'firms',d.firm_code.nunique())
+          assert len(d)>2500
+          req=['total_assets','accounts_receivable','fixed_assets','operating_revenue','net_profit','net_operating_cashflow','industry_name']
+          for c in req:
+              cov=float(d[c].notna().mean())
+              print(c,cov)
+              assert cov>0.50,(c,cov)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mj-year-${{ matrix.year }}
+          path: rri_modified_jones/year_${{ matrix.year }}/annual_${{ matrix.year }}.csv
+          retention-days: 7
+
+  analyze:
+    needs: fetch-year
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy statsmodels
+      - name: Rebuild clean RRI input
+        run: |
+          cat rri_modified_jones/rri_part_0.csv rri_modified_jones/rri_part_1.csv rri_modified_jones/rri_part_2.csv rri_modified_jones/rri_part_3.csv > rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv
+          python - <<'PY'
+          import pandas as pd
+          p='rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv'
+          d=pd.read_csv(p,dtype={'firm_code':str})
+          assert len(d)==232
+          assert d.firm_code.nunique()==217
+          assert not d.event_ids.astype(str).str.contains('EVENT00053').any()
+          print('RRI rows',len(d),'firms',d.firm_code.nunique())
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mj-year-*
+          path: rri_modified_jones/annual_parts
+          merge-multiple: true
+      - name: Combine full-market annual panel
+        run: |
+          python - <<'PY'
+          import pandas as pd, pathlib, json
+          p=pathlib.Path('rri_modified_jones/annual_parts')
+          files=sorted(p.glob('annual_*.csv'))
+          print('annual files',len(files),[x.name for x in files])
+          assert len(files)==13
+          d=pd.concat([pd.read_csv(x,dtype={'firm_code':str}) for x in files],ignore_index=True)
+          assert set(d.fiscal_year.astype(int))==set(range(2013,2026))
+          d=d.drop_duplicates(['firm_code','fiscal_year'],keep='last')
+          out=pathlib.Path('rri_modified_jones/FULL_A_SHARE_MODIFIED_JONES_INPUTS_2013_2025.csv')
+          d.to_csv(out,index=False,encoding='utf-8-sig')
+          qc={'rows':len(d),'firms':d.firm_code.nunique(),'years':sorted(d.fiscal_year.astype(int).unique().tolist()),'coverage':{c:float(d[c].notna().mean()) for c in ['total_assets','accounts_receivable','fixed_assets','operating_revenue','net_profit','net_operating_cashflow','industry_name']}}
+          print(json.dumps(qc,ensure_ascii=False,indent=2))
+          assert qc['rows']>40000 and qc['firms']>2500
+          for c,v in qc['coverage'].items(): assert v>0.50,(c,v)
+          pathlib.Path('rri_modified_jones/FULL_MARKET_QC.json').write_text(json.dumps(qc,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - name: Run frozen Modified Jones and RRI regressions
+        run: |
+          python rri_modified_jones/run_rri_modified_jones_v1_0.py \
+            --financial rri_modified_jones/FULL_A_SHARE_MODIFIED_JONES_INPUTS_2013_2025.csv \
+            --rri rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv \
+            --outdir rri_modified_jones/rri_modified_jones_results
+      - name: Print primary results
+        run: |
+          cat rri_modified_jones/rri_modified_jones_results/04_COVERAGE.csv
+          cat rri_modified_jones/rri_modified_jones_results/05_REGRESSION_RESULTS.csv
+          cat rri_modified_jones/rri_modified_jones_results/06_STATUS.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RRI_MODIFIED_JONES_PARALLEL_REAL_RESULT
+          path: |
+            rri_modified_jones/FULL_MARKET_QC.json
+            rri_modified_jones/RRI_FIRM_YEAR_232_CLEAN_v1.0.csv
+            rri_modified_jones/rri_modified_jones_results
+          retention-days: 30
