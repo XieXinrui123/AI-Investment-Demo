@@ -1,0 +1,30 @@
+name: RRI Analyst Coverage Probe
+on:
+  push:
+    branches: [rri-operating-experiment]
+    paths:
+      - 'rri_experiment/probe_eastmoney_analyst.py'
+      - 'rri_experiment/RRI_EVENT_MASTER_236.csv.zlib.b64'
+      - '.github/workflows/rri-analyst-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  analyst-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas requests
+      - name: Probe raw Eastmoney analyst/report coverage
+        run: python rri_experiment/probe_eastmoney_analyst.py
+      - name: Upload probe results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rri-analyst-probe-results
+          path: rri_experiment/analyst_probe_results/
+          if-no-files-found: warn
