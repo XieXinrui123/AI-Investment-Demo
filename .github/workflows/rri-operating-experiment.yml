@@ -28,30 +28,12 @@ jobs:
           ls -lh data/c_output/ControlVars_Y.dta
       - name: Download annual Zenodo balance-sheet segments for frozen Cash control
         run: |
+          set -euxo pipefail
           mkdir -p rri_experiment/zenodo_balance
-          python - <<'PY'
-          from pathlib import Path
-          from urllib.parse import quote
-          from urllib.request import Request, urlopen
-          names=[
-            '2012.1.1-2017.4.30资产负债.csv',
-            '2017.5.1-2020.12.31资产负债.csv',
-            '2021.1.1-2023.4.30资产负债.csv',
-            '2023.5.1-2025.12.31资产负债.csv',
-          ]
-          out=Path('rri_experiment/zenodo_balance')
-          for name in names:
-              url='https://zenodo.org/records/20032245/files/'+quote(name)+'?download=1'
-              dest=out/name
-              print('DOWNLOAD',url)
-              req=Request(url,headers={'User-Agent':'Mozilla/5.0'})
-              with urlopen(req,timeout=240) as r, open(dest,'wb') as f:
-                  while True:
-                      b=r.read(1024*1024)
-                      if not b: break
-                      f.write(b)
-              print('DOWNLOADED',dest,dest.stat().st_size)
-          PY
+          curl -L --fail --retry 3 --connect-timeout 30 -o 'rri_experiment/zenodo_balance/2012.1.1-2017.4.30资产负债.csv' 'https://zenodo.org/records/20032245/files/2012.1.1-2017.4.30%E8%B5%84%E4%BA%A7%E8%B4%9F%E5%80%BA.csv?download=1'
+          curl -L --fail --retry 3 --connect-timeout 30 -o 'rri_experiment/zenodo_balance/2017.5.1-2020.12.31资产负债.csv' 'https://zenodo.org/records/20032245/files/2017.5.1-2020.12.31%E8%B5%84%E4%BA%A7%E8%B4%9F%E5%80%BA.csv?download=1'
+          curl -L --fail --retry 3 --connect-timeout 30 -o 'rri_experiment/zenodo_balance/2021.1.1-2023.4.30资产负债.csv' 'https://zenodo.org/records/20032245/files/2021.1.1-2023.4.30%E8%B5%84%E4%BA%A7%E8%B4%9F%E5%80%BA.csv?download=1'
+          curl -L --fail --retry 3 --connect-timeout 30 -o 'rri_experiment/zenodo_balance/2023.5.1-2025.12.31资产负债.csv' 'https://zenodo.org/records/20032245/files/2023.5.1-2025.12.31%E8%B5%84%E4%BA%A7%E8%B4%9F%E5%80%BA.csv?download=1'
           ls -lh rri_experiment/zenodo_balance/
       - name: Run frozen RRI operating-performance experiment
         run: python rri_experiment/run_rri_operating_public.py
