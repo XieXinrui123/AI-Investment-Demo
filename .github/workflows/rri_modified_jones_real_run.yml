@@ -38,7 +38,7 @@ jobs:
 
       - name: Fetch full A-share annual financials
         run: |
-          python rri_modified_jones/fetch_ashare_modified_jones_inputs_v1_0.py \
+          python rri_modified_jones/fetch_fixed_wrapper.py \
             --start-year 2013 --end-year 2025 \
             --outdir rri_modified_jones/ashare_modified_jones_inputs
 
