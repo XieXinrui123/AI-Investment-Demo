@@ -1,0 +1,44 @@
+name: Debug Eastmoney Institution Visit Filters
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/rri_institution_visit_debug.yml']
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Probe Eastmoney filters
+        run: |
+          python - <<'PY'
+          import requests, json
+          url='https://datacenter-web.eastmoney.com/api/data/v1/get'
+          tests={
+            'akshare_notice_only':'(NUMBERNEW="1")(IS_SOURCE="1")(NOTICE_DATE>"2024-01-01")',
+            'receive_only':'(NUMBERNEW="1")(IS_SOURCE="1")(RECEIVE_START_DATE>"2024-01-01")',
+            '603300_notice':'(NUMBERNEW="1")(IS_SOURCE="1")(SECURITY_CODE="603300")(NOTICE_DATE>"2024-01-01")',
+            '603300_receive':'(NUMBERNEW="1")(IS_SOURCE="1")(SECURITY_CODE="603300")(RECEIVE_START_DATE>"2024-01-01")',
+            '300260_receive':'(NUMBERNEW="1")(IS_SOURCE="1")(SECURITY_CODE="300260")(RECEIVE_START_DATE>"2024-01-01")',
+          }
+          for name,filt in tests.items():
+            p={'sortColumns':'NOTICE_DATE,SUM,RECEIVE_START_DATE,SECURITY_CODE','sortTypes':'-1,-1,-1,1','pageSize':'5','pageNumber':'1','reportName':'RPT_ORG_SURVEYNEW','columns':'ALL','source':'WEB','client':'WEB','filter':filt}
+            r=requests.get(url,params=p,timeout=30)
+            print('\n###',name,'HTTP',r.status_code)
+            try: o=r.json()
+            except Exception: print(r.text[:1000]); continue
+            print('success=',o.get('success'),'message=',o.get('message'),'code=',o.get('code'))
+            result=o.get('result')
+            if result is None:
+              print('RESULT=NULL'); continue
+            print('count=',result.get('count'),'pages=',result.get('pages'))
+            rows=result.get('data') or []
+            if rows:
+              print('keys=',list(rows[0].keys()))
+              for row in rows[:2]: print(json.dumps(row,ensure_ascii=False)[:1800])
+          PY
