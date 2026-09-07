@@ -1,0 +1,32 @@
+name: RRI Institution Visit Coverage Pilot
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths:
+      - 'rri_institution_visit_pilot/**'
+      - '.github/workflows/rri_institution_visit_pilot.yml'
+  workflow_dispatch:
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas requests
+      - name: Run frozen 30-event coverage pilot
+        run: python rri_institution_visit_pilot/run_coverage_pilot.py
+      - name: Print coverage gate
+        run: |
+          cat rri_institution_visit_pilot/output/05_COVERAGE_SUMMARY.json
+          cat rri_institution_visit_pilot/output/06_COVERAGE_GATE.md
+      - name: Upload pilot outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: RRI_INSTITUTION_VISIT_COVERAGE_PILOT_30
+          path: rri_institution_visit_pilot/output
+          retention-days: 30
