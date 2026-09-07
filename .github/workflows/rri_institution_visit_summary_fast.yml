@@ -1,0 +1,22 @@
+name: RRI Institution Visit Summary Fast Pilot
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/rri_institution_visit_summary_fast.yml']
+
+jobs:
+  fast-pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install pandas requests
+      - run: python rri_institution_visit_pilot/run_summary_pilot_fast.py
+      - run: cat rri_institution_visit_pilot/output_fast/SUMMARY.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RRI_INSTITUTION_VISIT_FAST_PILOT
+          path: rri_institution_visit_pilot/output_fast
+          retention-days: 30
