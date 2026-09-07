@@ -13,7 +13,12 @@ DTA_PATH=BASE.parent/'external_controls/data/c_output/ControlVars_Y.dta'
 BAL_DIR=BASE/'zenodo_balance'
 
 def norm_code(x):
-    s=re.sub(r'\D','',str(x)); return s[-6:].zfill(6)
+    if pd.isna(x): return None
+    s=str(x).strip()
+    if re.fullmatch(r'\d+(?:\.0+)?',s):
+        return str(int(float(s))).zfill(6)[-6:]
+    digits=re.sub(r'\D','',s)
+    return digits[-6:].zfill(6) if digits else None
 
 def read_balance_files():
     files=sorted(BAL_DIR.glob('*.csv'))
@@ -37,7 +42,7 @@ def read_balance_files():
     b.loc[~np.isfinite(b.cash_ratio_external),'cash_ratio_external']=np.nan
     b['prefer_original']=(b.adj_code.fillna(999999)==0).astype(int)
     b=b.sort_values(['firm_code','fiscal_year','prefer_original','adj_code'],ascending=[True,True,False,True])
-    print('BALANCE_Q4_ROWS',len(b),'DUP_ROWS_BEFORE_RULE',int(b.duplicated(['firm_code','fiscal_year'],keep=False).sum()))
+    print('BALANCE_Q4_ROWS',len(b),'DUP_ROWS_BEFORE_RULE',int(b.duplicated(['firm_code','fiscal_year'],keep=False).sum()),'UNIQUE_CODES',b.firm_code.nunique())
     b=b.drop_duplicates(['firm_code','fiscal_year'],keep='first')
     return b[['firm_code','fiscal_year','cash_ratio_external']]
 
