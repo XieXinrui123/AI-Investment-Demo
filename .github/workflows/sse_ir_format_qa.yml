@@ -1,0 +1,83 @@
+name: SSE Institutional Visit Disclosure Format QA
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/sse_ir_format_qa.yml']
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests pymupdf
+      - name: Inspect representative SSE annual reports
+        run: |
+          python - <<'PY'
+          import requests,re,time,json
+          import pymupdf
+          H={'User-Agent':'Mozilla/5.0','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Accept':'application/json, text/plain, */*'}
+          Q='https://www.cninfo.com.cn/new/hisAnnouncement/query'
+          BASE='https://static.cninfo.com.cn/'
+          samples=[
+            ('600577','gssh0600577',2017,'精达股份'),
+            ('601666','9900001301',2022,'平煤股份'),
+            ('603300','9900023468',2024,'华铁应急/海南华铁'),
+            ('600389','gssh0600389',2021,'江山股份'),
+          ]
+          kws=['接待调研','机构调研','实地调研','特定对象调研','投资者关系','投资者沟通','投资者互动','接待对象','接待时间','业绩说明会','路演','调研','沟通','投资者']
+          def post(body):
+            last=None
+            for k in range(6):
+              try:
+                r=requests.post(Q,headers=H,data=body,timeout=30); r.raise_for_status(); return r.json()
+              except Exception as e:
+                last=e; print('QUERY_RETRY',k+1,repr(e)); time.sleep(k+1)
+            raise last
+          def getb(url):
+            last=None
+            for k in range(5):
+              try:
+                r=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=90); r.raise_for_status();
+                if len(r.content)<10000: raise RuntimeError('small pdf')
+                return r.content
+              except Exception as e:
+                last=e; print('PDF_RETRY',k+1,repr(e)); time.sleep(k+1)
+            raise last
+          for code,org,y,name in samples:
+            print('\n\n================',code,name,y,'================')
+            body={'tabName':'fulltext','pageSize':'30','pageNum':'1','column':'','category':'category_ndbg_szsh;','plate':'','searchkey':'','secid':'','trade':'','seDate':f'{y+1}-01-01~{y+1}-10-31','stock':f'{code},{org}','sortName':'','sortType':'','isHLtitle':'true'}
+            o=post(body); anns=o.get('announcements') or []
+            print('ANN_COUNT',len(anns))
+            target=None
+            for a in anns:
+              t=re.sub(r'</?em>','',a.get('announcementTitle') or '')
+              print('ANN',t,a.get('adjunctUrl'))
+              if f'{y}年年度报告' in t and '摘要' not in t and '英文' not in t:
+                if target is None or ('修订' in t or '更新' in t): target=a
+            if not target:
+              print('NO_REPORT'); continue
+            title=re.sub(r'</?em>','',target.get('announcementTitle') or '')
+            url=BASE+target['adjunctUrl'].lstrip('/')
+            b=getb(url); print('REPORT',title,'BYTES',len(b),'URL',url)
+            doc=pymupdf.open(stream=b,filetype='pdf'); print('PAGES',doc.page_count)
+            hits=[]
+            for i in range(doc.page_count):
+              text=doc.load_page(i).get_text('text') or ''
+              found=[k for k in kws if k in text]
+              if found:
+                hits.append((i+1,found,text))
+            print('HIT_PAGE_COUNT',len(hits))
+            for p,found,text in hits:
+              # Print concise windows around strongest terms, otherwise first investor occurrence
+              flat=re.sub(r'\s+',' ',text)
+              anchors=['接待调研','机构调研','投资者关系','投资者沟通','业绩说明会','调研','投资者']
+              positions=[(flat.find(a),a) for a in anchors if flat.find(a)>=0]
+              pos,anchor=min(positions) if positions else (0,'')
+              s=max(0,pos-450); e=min(len(flat),pos+1800)
+              print('PAGE',p,'FOUND',found,'ANCHOR',anchor,'SNIP',flat[s:e])
+          PY
