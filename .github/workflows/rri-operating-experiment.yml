@@ -1,0 +1,29 @@
+name: RRI Operating Performance Experiment
+on:
+  push:
+    branches: [rri-operating-experiment]
+    paths:
+      - 'rri_experiment/**'
+      - '.github/workflows/rri-operating-experiment.yml'
+  workflow_dispatch:
+
+jobs:
+  run-rri-operating:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install pandas numpy statsmodels
+      - name: Run frozen RRI operating-performance experiment
+        run: python rri_experiment/run_rri_operating_public.py
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rri-operating-results
+          path: rri_experiment/results/
+          if-no-files-found: warn
