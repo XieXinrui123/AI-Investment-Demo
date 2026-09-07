@@ -1,0 +1,49 @@
+name: Annual Report IR Positive Control
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/annual_report_ir_positive_control.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install requests pypdf
+      - run: |
+          python - <<'PY'
+          import requests,re,json,io
+          from pypdf import PdfReader
+          H={'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Accept':'application/json, text/plain, */*'}
+          code='000703'
+          items=requests.post('http://www.cninfo.com.cn/new/information/topSearch/query',headers=H,data={'keyWord':code,'maxNum':'10'},timeout=20).json()
+          org=[x['orgId'] for x in items if x.get('code')==code][0]
+          body={'tabName':'fulltext','pageSize':'30','pageNum':'1','column':'szse','category':'category_ndbg_szsh;','plate':'sz','searchkey':'','secid':'','trade':'','seDate':'2019-01-01~2019-06-30','stock':f'{code},{org}','sortName':'','sortType':'','isHLtitle':'true'}
+          o=requests.post('http://www.cninfo.com.cn/new/hisAnnouncement/query',headers=H,data=body,timeout=30).json()
+          anns=o.get('announcements') or []
+          for a in anns: print('ANN',a.get('announcementTitle'),a.get('adjunctUrl'))
+          target=None
+          for a in anns:
+            title=re.sub(r'</?em>','',a.get('announcementTitle') or '')
+            if '2018年年度报告' in title and '摘要' not in title:
+              target=a; break
+          assert target, '2018 annual report not found'
+          pdfurl='http://static.cninfo.com.cn/'+target['adjunctUrl'].lstrip('/')
+          b=requests.get(pdfurl,headers={'User-Agent':H['User-Agent']},timeout=60).content
+          print('PDF bytes',len(b),'URL',pdfurl)
+          reader=PdfReader(io.BytesIO(b)); print('pages',len(reader.pages))
+          hits=[]
+          for i,p in enumerate(reader.pages):
+            t=p.extract_text() or ''
+            if any(k in t for k in ['接待调研','接待时间','投资者关系活动','实地调研','调研的基本情况']):
+              hits.append((i+1,t))
+          print('hit pages', [x[0] for x in hits])
+          joined='\n'.join(t for _,t in hits)
+          # print relevant snippets only
+          for kw in ['2018年03月19日','2018 年 03 月 19 日','2018-03-19','2018年3月19日','2018 年 3 月 19 日']:
+            if kw in joined: print('FOUND DATE',kw)
+          for _,t in hits:
+            idx=max(t.find('接待'),0); print('SNIP',re.sub(r'\s+',' ',t[idx:idx+2500]))
+          PY
