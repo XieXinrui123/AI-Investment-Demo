@@ -1,0 +1,32 @@
+name: RRI Report Based Institution Visit Coverage Audit v2
+
+on:
+  push:
+    branches:
+      - rri-institution-visit-pilot-20260907
+    paths:
+      - 'rri_institution_visit_pilot/run_report_based_coverage_audit_v2.py'
+      - '.github/workflows/rri_report_based_coverage_audit_v2.yml'
+  workflow_dispatch:
+
+jobs:
+  audit-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas requests pymupdf
+      - name: Run corrected report-based 30-event coverage audit
+        run: python rri_institution_visit_pilot/run_report_based_coverage_audit_v2.py
+      - name: Print corrected coverage summary
+        run: |
+          cat rri_institution_visit_pilot/output_report_audit_v2/04_SUMMARY.json
+          cat rri_institution_visit_pilot/output_report_audit_v2/05_COVERAGE_GATE.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RRI_REPORT_BASED_COVERAGE_AUDIT_30_V2
+          path: rri_institution_visit_pilot/output_report_audit_v2
+          retention-days: 30
