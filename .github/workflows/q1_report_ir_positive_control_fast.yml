@@ -1,0 +1,61 @@
+name: Q1 Report IR Positive Control Fast
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/q1_report_ir_positive_control_fast.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install requests pypdf
+      - run: |
+          python - <<'PY'
+          import requests,re,io,time
+          from pypdf import PdfReader
+          H={'User-Agent':'Mozilla/5.0','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Accept':'application/json, text/plain, */*'}
+          qurl='https://www.cninfo.com.cn/new/hisAnnouncement/query'
+          body={'tabName':'fulltext','pageSize':'30','pageNum':'1','column':'szse','category':'category_yjdbg_szsh;','plate':'sz','searchkey':'','secid':'','trade':'','seDate':'2018-04-01~2018-05-31','stock':'000703,gssz0000703','sortName':'','sortType':'','isHLtitle':'true'}
+          o=None
+          for k in range(5):
+            try:
+              r=requests.post(qurl,headers=H,data=body,timeout=25); r.raise_for_status(); o=r.json(); break
+            except Exception as e:
+              print('QUERY_RETRY',k+1,repr(e)); time.sleep(k+1)
+          assert o is not None
+          anns=o.get('announcements') or []
+          print('TOTAL',o.get('totalAnnouncement'),'N',len(anns))
+          target=None
+          for a in anns:
+            t=re.sub(r'</?em>','',a.get('announcementTitle') or '')
+            print('ANN',t,a.get('adjunctUrl'))
+            if '2018年第一季度报告' in t and '摘要' not in t: target=a
+          assert target, 'Q1 report not found'
+          url='https://static.cninfo.com.cn/'+target['adjunctUrl'].lstrip('/')
+          b=None
+          for k in range(5):
+            try:
+              rr=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=60); rr.raise_for_status(); b=rr.content
+              if len(b)<10000: raise RuntimeError('pdf too small')
+              break
+            except Exception as e:
+              print('PDF_RETRY',k+1,repr(e)); time.sleep(k+1)
+          assert b is not None
+          print('PDF_BYTES',len(b),url)
+          reader=PdfReader(io.BytesIO(b)); print('PAGES',len(reader.pages))
+          found=[]; hitpages=[]
+          for i,p in enumerate(reader.pages):
+            t=p.extract_text() or ''
+            if any(k in t for k in ['接待调研','实地调研','投资者关系活动','接待时间']):
+              hitpages.append(i+1)
+              flat=re.sub(r'\s+','',t)
+              found += re.findall(r'2018年0?3月(?:19|20|21)日',flat)
+              print('HIT_PAGE',i+1,re.sub(r'\s+',' ',t)[:3500])
+          print('HITPAGES',hitpages)
+          print('FOUND',sorted(set(found)))
+          assert any('19日' in x for x in found), 'known 3/19 not recovered'
+          print('POSITIVE_CONTROL=PASS')
+          PY
