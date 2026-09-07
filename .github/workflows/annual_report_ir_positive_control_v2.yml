@@ -1,0 +1,110 @@
+name: Periodic Report IR Positive Control v2
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/annual_report_ir_positive_control_v2.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install requests pypdf
+      - name: Query and parse 000703 periodic reports
+        run: |
+          python - <<'PY'
+          import requests,re,json,io,time
+          from pypdf import PdfReader
+
+          H={'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Accept':'application/json, text/plain, */*'}
+          code='000703'; org='gssz0000703'
+          query='https://www.cninfo.com.cn/new/hisAnnouncement/query'
+          static='https://static.cninfo.com.cn/'
+
+          def post_json(body,retries=5):
+              last=None
+              for k in range(retries):
+                  try:
+                      r=requests.post(query,headers=H,data=body,timeout=40)
+                      r.raise_for_status(); return r.json()
+                  except Exception as e:
+                      last=e; time.sleep(1.5*(k+1))
+              raise last
+
+          def get_bytes(url,retries=5):
+              last=None
+              for k in range(retries):
+                  try:
+                      r=requests.get(url,headers={'User-Agent':H['User-Agent']},timeout=90)
+                      r.raise_for_status()
+                      if len(r.content)<10000: raise RuntimeError(f'too small {len(r.content)}')
+                      return r.content
+                  except Exception as e:
+                      last=e; time.sleep(1.5*(k+1))
+              raise last
+
+          # Pull all four periodic-report categories around 2018.
+          cats=['category_yjdbg_szsh','category_bndbg_szsh','category_sjdbg_szsh','category_ndbg_szsh']
+          anns=[]
+          for cat in cats:
+              body={'tabName':'fulltext','pageSize':'30','pageNum':'1','column':'szse','category':cat+';','plate':'sz','searchkey':'','secid':'','trade':'','seDate':'2018-01-01~2019-06-30','stock':f'{code},{org}','sortName':'','sortType':'','isHLtitle':'true'}
+              o=post_json(body)
+              for a in (o.get('announcements') or []):
+                  a=dict(a); a['_cat']=cat; anns.append(a)
+
+          # Deduplicate announcements.
+          uniq={}
+          for a in anns:
+              key=a.get('announcementId') or a.get('adjunctUrl') or a.get('announcementTitle')
+              uniq[key]=a
+          anns=list(uniq.values())
+          print('ANNOUNCEMENTS',len(anns))
+          for a in anns:
+              print('ANN',a.get('_cat'),re.sub(r'</?em>','',a.get('announcementTitle') or ''),a.get('adjunctUrl'))
+
+          # Prefer 2018Q1 and 2018 annual body; parse every candidate body if available.
+          candidates=[]
+          for a in anns:
+              title=re.sub(r'</?em>','',a.get('announcementTitle') or '')
+              if ('2018年第一季度报告' in title or '2018年半年度报告' in title or '2018年第三季度报告' in title or '2018年年度报告' in title) and '摘要' not in title:
+                  candidates.append(a)
+          print('CANDIDATES',len(candidates))
+          assert candidates, 'No 2018 periodic report bodies found'
+
+          known=['2018年03月19日','2018年3月19日','2018-03-19','2018 年 03 月 19 日','2018 年3月19日']
+          found_dates=[]
+          hit_docs=[]
+          for a in candidates:
+              title=re.sub(r'</?em>','',a.get('announcementTitle') or '')
+              url=static+a['adjunctUrl'].lstrip('/')
+              b=get_bytes(url)
+              print('PDF',title,'bytes',len(b),url)
+              reader=PdfReader(io.BytesIO(b)); print('pages',len(reader.pages))
+              hits=[]
+              for i,p in enumerate(reader.pages):
+                  try: t=p.extract_text() or ''
+                  except Exception: t=''
+                  if any(k in t for k in ['接待调研','接待时间','投资者关系活动','实地调研','调研的基本情况','接待对象类型']):
+                      hits.append((i+1,t))
+              print('HIT_PAGES',title,[i for i,_ in hits])
+              joined='\n'.join(t for _,t in hits)
+              local=[]
+              for kw in known:
+                  if kw in joined: local.append(kw)
+              # Broad date regex around March 2018.
+              local += re.findall(r'2018\s*年\s*0?3\s*月\s*(?:19|20|21)\s*日',joined)
+              if local:
+                  hit_docs.append(title); found_dates.extend(local)
+                  print('KNOWN_DATE_HITS',title,sorted(set(local)))
+              for pg,t in hits[:5]:
+                  flat=re.sub(r'\s+',' ',t)
+                  ix=min([x for x in [flat.find('接待'),flat.find('实地调研'),flat.find('投资者关系')] if x>=0] or [0])
+                  print('SNIP',title,'page',pg,flat[ix:ix+2200])
+
+          print('HIT_DOCS',hit_docs)
+          print('FOUND_DATES',sorted(set(found_dates)))
+          assert found_dates, 'Failed to recover known 2018-03-19/20/21 visit dates from periodic reports'
+          print('POSITIVE_CONTROL=PASS')
+          PY
