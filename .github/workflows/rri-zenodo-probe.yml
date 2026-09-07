@@ -1,0 +1,41 @@
+name: RRI Zenodo Financial Probe
+on:
+  push:
+    branches: [rri-operating-experiment]
+    paths:
+      - '.github/workflows/rri-zenodo-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe Zenodo record and statement CSV headers
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          rec='https://zenodo.org/api/records/20032245'
+          with urllib.request.urlopen(rec, timeout=60) as r:
+              meta=json.load(r)
+          print('TITLE:', meta.get('metadata',{}).get('title'))
+          files=meta.get('files',[])
+          print('FILES:', len(files))
+          for f in files:
+              print('FILE', f.get('key'), f.get('size'), f.get('links',{}).get('self'))
+          for f in files:
+              key=f.get('key','')
+              if key.endswith('.csv') and ('资产负债' in key or '利润' in key):
+                  url=f.get('links',{}).get('self') or f.get('links',{}).get('content')
+                  print('\nPROBE', key, url)
+                  req=urllib.request.Request(url, headers={'Range':'bytes=0-131071','User-Agent':'Mozilla/5.0'})
+                  with urllib.request.urlopen(req, timeout=120) as r:
+                      b=r.read(131072)
+                  for enc in ['utf-8-sig','gb18030','gbk']:
+                      try:
+                          txt=b.decode(enc); break
+                      except Exception: txt=None
+                  if txt is None:
+                      print('DECODE_FAILED', b[:50]); continue
+                  for line in txt.splitlines()[:5]: print(line[:4000])
+          PY
