@@ -1,0 +1,29 @@
+name: CNINFO IR Positive Control
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/cninfo_ir_positive_control.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install requests
+      - run: |
+          python - <<'PY'
+          import requests, json
+          H={'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest','Accept':'application/json, text/plain, */*'}
+          code='000703'
+          top='http://www.cninfo.com.cn/new/information/topSearch/query'
+          r=requests.post(top,headers=H,data={'keyWord':code,'maxNum':'10'},timeout=20); print('top status',r.status_code); items=r.json(); print(json.dumps(items,ensure_ascii=False)[:3000])
+          org=[x['orgId'] for x in items if x.get('code')==code and x.get('orgId')][0]
+          print('ORGID',org)
+          url='http://www.cninfo.com.cn/new/hisAnnouncement/query'
+          for key in ['投资者关系活动记录表','投资者关系','调研']:
+            body={'tabName':'fulltext','pageSize':'30','pageNum':'1','column':'szse','category':'','plate':'sz','searchkey':key,'secid':'','trade':'','seDate':'2018-01-01~2018-06-30','stock':f'{code},{org}','sortName':'','sortType':'','isHLtitle':'true'}
+            q=requests.post(url,headers=H,data=body,timeout=30); print('\nKEY',key,'status',q.status_code); o=q.json(); print('hasMore',o.get('hasMore'),'total',o.get('totalAnnouncement'))
+            for a in (o.get('announcements') or [])[:20]: print(a.get('announcementTime'),a.get('announcementTitle'),a.get('adjunctUrl'))
+          PY
