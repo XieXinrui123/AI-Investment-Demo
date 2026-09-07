@@ -1,0 +1,33 @@
+name: Final QA Institutional Visit Sparsity
+
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/rri_institution_visit_final_qa.yml']
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install requests
+      - run: |
+          python - <<'PY'
+          import requests, json
+          u='https://datacenter-web.eastmoney.com/api/data/v1/get'
+          tests={
+            'known_positive_600017_2026':'(NUMBERNEW="1")(IS_SOURCE="1")(SECURITY_CODE="600017")(RECEIVE_START_DATE>=\'2026-09-01\')(RECEIVE_START_DATE<=\'2026-09-07\')',
+            'all_2018':'(NUMBERNEW="1")(IS_SOURCE="1")(RECEIVE_START_DATE>=\'2018-01-01\')(RECEIVE_START_DATE<=\'2018-12-31\')',
+            '000703_since2015':'(NUMBERNEW="1")(IS_SOURCE="1")(SECURITY_CODE="000703")(RECEIVE_START_DATE>=\'2015-01-01\')(RECEIVE_START_DATE<=\'2024-12-31\')',
+            '002438_since2015':'(NUMBERNEW="1")(IS_SOURCE="1")(SECURITY_CODE="002438")(RECEIVE_START_DATE>=\'2015-01-01\')(RECEIVE_START_DATE<=\'2024-12-31\')',
+            '000762_since2015':'(NUMBERNEW="1")(IS_SOURCE="1")(SECURITY_CODE="000762")(RECEIVE_START_DATE>=\'2015-01-01\')(RECEIVE_START_DATE<=\'2024-12-31\')'
+          }
+          for n,f in tests.items():
+            p={'sortColumns':'NOTICE_DATE,SUM,RECEIVE_START_DATE,SECURITY_CODE','sortTypes':'-1,-1,-1,1','pageSize':'5','pageNumber':'1','reportName':'RPT_ORG_SURVEYNEW','columns':'ALL','source':'WEB','client':'WEB','filter':f}
+            o=requests.get(u,params=p,timeout=30).json(); r=o.get('result')
+            print('\n###',n,'success',o.get('success'),'code',o.get('code'),'msg',o.get('message'),'null',r is None)
+            if r:
+              print('count',r.get('count'),'pages',r.get('pages'))
+              for x in (r.get('data') or [])[:3]: print(json.dumps(x,ensure_ascii=False)[:1200])
+          PY
