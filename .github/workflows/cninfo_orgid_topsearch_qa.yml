@@ -1,0 +1,33 @@
+name: CNINFO OrgId TopSearch QA
+on:
+  push:
+    branches: [rri-institution-visit-pilot-20260907]
+    paths: ['.github/workflows/cninfo_orgid_topsearch_qa.yml']
+  workflow_dispatch:
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Query orgIds
+        run: |
+          python - <<'PY'
+          import requests,time,json
+          H={'User-Agent':'Mozilla/5.0','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','X-Requested-With':'XMLHttpRequest'}
+          u='https://www.cninfo.com.cn/new/information/topSearch/query'
+          for code in ['002390','002591','002438','603300','601666','600577','000703','000762']:
+              ok=None
+              for k in range(4):
+                  try:
+                      r=requests.post(u,headers=H,data={'keyWord':code,'maxNum':'10'},timeout=20)
+                      r.raise_for_status(); rows=r.json()
+                      match=[x for x in rows if x.get('code')==code]
+                      print(code, json.dumps(match,ensure_ascii=False))
+                      ok=True; break
+                  except Exception as e:
+                      print(code,'retry',k+1,repr(e)); time.sleep(k+1)
+              if not ok: print(code,'FAILED')
+          PY
