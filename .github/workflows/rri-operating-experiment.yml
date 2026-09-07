@@ -3,21 +3,56 @@ on:
   push:
     branches: [rri-operating-experiment]
     paths:
-      - 'rri_experiment/**'
+      - 'rri_experiment/run_rri_operating_public.py'
+      - 'rri_experiment/RRI_FIRM_YEAR_v2.3m_ACTIONS_INPUT.csv.zlib.b64'
       - '.github/workflows/rri-operating-experiment.yml'
   workflow_dispatch:
 
 jobs:
   run-rri-operating:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && pip install pandas numpy statsmodels
+        run: python -m pip install --upgrade pip && pip install pandas numpy statsmodels pyreadstat
+      - name: Pull verified annual CSMAR-derived controls
+        run: |
+          git lfs install
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 https://github.com/renzhongxing9/Ashare-control-vars.git external_controls
+          cd external_controls
+          git lfs pull --include='data/c_output/ControlVars_Y.dta'
+          ls -lh data/c_output/ControlVars_Y.dta
+      - name: Download annual Zenodo balance-sheet segments for frozen Cash control
+        run: |
+          mkdir -p rri_experiment/zenodo_balance
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+          names=[
+            '2012.1.1-2017.4.30资产负债.csv',
+            '2017.5.1-2020.12.31资产负债.csv',
+            '2021.1.1-2023.4.30资产负债.csv',
+            '2023.5.1-2025.12.31资产负债.csv',
+          ]
+          out=Path('rri_experiment/zenodo_balance')
+          for name in names:
+              url='https://zenodo.org/records/20032245/files/'+quote(name)+'?download=1'
+              dest=out/name
+              print('DOWNLOAD',url)
+              req=Request(url,headers={'User-Agent':'Mozilla/5.0'})
+              with urlopen(req,timeout=240) as r, open(dest,'wb') as f:
+                  while True:
+                      b=r.read(1024*1024)
+                      if not b: break
+                      f.write(b)
+              print('DOWNLOADED',dest,dest.stat().st_size)
+          PY
+          ls -lh rri_experiment/zenodo_balance/
       - name: Run frozen RRI operating-performance experiment
         run: python rri_experiment/run_rri_operating_public.py
       - name: Upload results
